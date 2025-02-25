@@ -1,10 +1,5 @@
 pipeline {
-    agent {
-        docker {
-            image 'mcr.microsoft.com/dotnet/sdk:8.0'
-            label 'docker-dotnet'
-        }
-    }
+    agent any // Use any available agent
 
     environment {
         DOTNET_SDK_VERSION = '8.0'
@@ -65,9 +60,7 @@ pipeline {
 
     post {
         always {
-            node('any') {
-                cleanWs()
-            }
+            cleanWs()
         }
         success {
             echo 'Build and deployment successful!'
