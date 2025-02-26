@@ -2,6 +2,7 @@ pipeline {
     agent any
 
     environment {
+         DOCKER_HOST = "tcp://172.18.0.4:2375"
         BACKEND_IMAGE = 'game-store-backend'
         FRONTEND_IMAGE = 'game-store-frontend'
         BACKEND_CONTAINER = 'gamestore-backend-container'
