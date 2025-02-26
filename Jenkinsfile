@@ -2,6 +2,7 @@ pipeline {
     agent any
 
     environment {
+        DOCKER_HOST = 'npipe:////./pipe/docker_engine' // Use Docker Desktop on Windows
         COMPOSE_PROJECT_NAME = 'gamestore'
         COMPOSE_FILE = 'docker-compose.yml'
     }
