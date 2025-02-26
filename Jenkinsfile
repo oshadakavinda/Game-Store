@@ -2,7 +2,8 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_HOST = 'npipe:////./pipe/docker_engine' // Use Docker Desktop on Windows
+        // Use Docker Desktop on Windows (adjust if needed)
+        DOCKER_HOST = 'tcp://localhost:2375' // Use TCP if using Docker Desktop or WSL 2
         COMPOSE_PROJECT_NAME = 'gamestore'
         COMPOSE_FILE = 'docker-compose.yml'
     }
@@ -33,7 +34,7 @@ pipeline {
         stage('Run Tests') {
             steps {
                 script {
-                    sh 'docker compose exec backend dotnet test'
+                    sh 'docker compose exec backend dotnet test || exit 1'  // Ensure non-zero exit code if tests fail
                 }
             }
         }
@@ -41,7 +42,7 @@ pipeline {
         stage('Verify Services') {
             steps {
                 script {
-                    sh 'docker compose ps'
+                    sh 'docker compose ps'  // Verifies that services are up
                 }
             }
         }
@@ -50,7 +51,7 @@ pipeline {
     post {
         always {
             script {
-                sh 'docker compose down'
+                sh 'docker compose down'  // Cleanup after pipeline run
             }
             echo 'Cleaning up...'
         }
