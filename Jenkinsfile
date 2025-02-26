@@ -2,15 +2,15 @@ pipeline {
     agent any
 
     environment {
-    DOCKER_HOST = 'npipe:////./pipe/docker_engine'
-    COMPOSE_PROJECT_NAME = 'gamestore'
-    COMPOSE_FILE = 'docker-compose.yml'
-}
-
+        // Environment variables for Docker Compose
+        COMPOSE_PROJECT_NAME = 'gamestore' // Unique project name to avoid conflicts
+        COMPOSE_FILE = 'docker-compose.yml' // Path to your docker-compose.yml file
+    }
 
     stages {
         stage('Checkout') {
             steps {
+                // Pull the code from the Git repository
                 checkout scm
             }
         }
@@ -18,7 +18,8 @@ pipeline {
         stage('Build Docker Images') {
             steps {
                 script {
-                    sh 'docker compose build'
+                    // Build Docker images using docker-compose
+                    sh 'docker-compose build'
                 }
             }
         }
@@ -26,7 +27,8 @@ pipeline {
         stage('Start Containers') {
             steps {
                 script {
-                    sh 'docker compose up -d'
+                    // Start the containers in detached mode
+                    sh 'docker-compose up -d'
                 }
             }
         }
@@ -34,7 +36,8 @@ pipeline {
         stage('Run Tests') {
             steps {
                 script {
-                    sh 'docker compose exec backend dotnet test || exit 1'  // Ensure non-zero exit code if tests fail
+                    // Optionally, run tests inside the containers
+                    sh 'docker-compose exec backend dotnet test'
                 }
             }
         }
@@ -42,7 +45,8 @@ pipeline {
         stage('Verify Services') {
             steps {
                 script {
-                    sh 'docker compose ps'  // Verifies that services are up
+                    // Verify that the services are running
+                    sh 'docker-compose ps'
                 }
             }
         }
@@ -50,8 +54,9 @@ pipeline {
 
     post {
         always {
+            // Clean up Docker Compose resources
             script {
-                sh 'docker compose down'  // Cleanup after pipeline run
+                sh 'docker-compose down'
             }
             echo 'Cleaning up...'
         }
