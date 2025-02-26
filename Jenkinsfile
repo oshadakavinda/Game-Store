@@ -2,51 +2,64 @@ pipeline {
     agent any
 
     environment {
-        // Environment variables for Docker Compose
-        COMPOSE_PROJECT_NAME = 'gamestore' // Unique project name to avoid conflicts
-        COMPOSE_FILE = 'docker-compose.yml' // Path to your docker-compose.yml file
+        BACKEND_IMAGE = 'game-store-backend'
+        FRONTEND_IMAGE = 'game-store-frontend'
+        BACKEND_CONTAINER = 'gamestore-backend-container'
+        FRONTEND_CONTAINER = 'gamestore-frontend-container'
     }
 
     stages {
         stage('Checkout') {
             steps {
-                // Pull the code from the Git repository
                 checkout scm
             }
         }
 
-        stage('Build Docker Images') {
+        stage('Build Backend Image') {
             steps {
                 script {
-                    // Build Docker images using docker-compose
-                    sh 'docker-compose build'
+                    sh 'docker build -t $BACKEND_IMAGE GameStore.Api'
                 }
             }
         }
 
-        stage('Start Containers') {
+        stage('Build Frontend Image') {
             steps {
                 script {
-                    // Start the containers in detached mode
-                    sh 'docker-compose up -d'
+                    sh 'docker build -t $FRONTEND_IMAGE GameStore.Frontend'
                 }
             }
         }
 
-        stage('Run Tests') {
+        stage('Run Backend Container') {
             steps {
                 script {
-                    // Optionally, run tests inside the containers
-                    sh 'docker-compose exec backend dotnet test'
+                    sh 'docker run -d --name $BACKEND_CONTAINER -p 5000:5000 $BACKEND_IMAGE'
                 }
             }
         }
 
-        stage('Verify Services') {
+        stage('Run Frontend Container') {
             steps {
                 script {
-                    // Verify that the services are running
-                    sh 'docker-compose ps'
+                    sh 'docker run -d --name $FRONTEND_CONTAINER -p 3000:3000 $FRONTEND_IMAGE'
+                }
+            }
+        }
+
+        stage('Run Backend Tests') {
+            steps {
+                script {
+                    sh 'docker exec $BACKEND_CONTAINER dotnet test'
+                }
+            }
+        }
+
+        stage('Verify Containers') {
+            steps {
+                script {
+                    sh 'docker ps | grep $BACKEND_CONTAINER'
+                    sh 'docker ps | grep $FRONTEND_CONTAINER'
                 }
             }
         }
@@ -54,11 +67,20 @@ pipeline {
 
     post {
         always {
-            // Clean up Docker Compose resources
             script {
-                sh 'docker-compose down'
+                // Stop and remove backend container
+                sh 'docker stop $BACKEND_CONTAINER || true'
+                sh 'docker rm $BACKEND_CONTAINER || true'
+
+                // Stop and remove frontend container
+                sh 'docker stop $FRONTEND_CONTAINER || true'
+                sh 'docker rm $FRONTEND_CONTAINER || true'
+
+                // Remove images
+                sh 'docker rmi $BACKEND_IMAGE || true'
+                sh 'docker rmi $FRONTEND_IMAGE || true'
             }
-            echo 'Cleaning up...'
+            echo 'Cleaned up Docker resources.'
         }
         success {
             echo 'Build and deployment successful!'
