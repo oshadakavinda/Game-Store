@@ -2,11 +2,11 @@ pipeline {
     agent any
 
     environment {
-        // Use Docker Desktop on Windows (adjust if needed)
-        DOCKER_HOST = 'tcp://localhost:2375' // Use TCP if using Docker Desktop or WSL 2
-        COMPOSE_PROJECT_NAME = 'gamestore'
-        COMPOSE_FILE = 'docker-compose.yml'
-    }
+    DOCKER_HOST = 'npipe:////./pipe/docker_engine'
+    COMPOSE_PROJECT_NAME = 'gamestore'
+    COMPOSE_FILE = 'docker-compose.yml'
+}
+
 
     stages {
         stage('Checkout') {
