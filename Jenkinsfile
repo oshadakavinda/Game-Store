@@ -46,7 +46,7 @@ pipeline {
             steps {
                 script {
                     // Verify that the services are running
-                    sh 'docker-compose ps'
+                    sh 'docker compose ps'
                 }
             }
         }
