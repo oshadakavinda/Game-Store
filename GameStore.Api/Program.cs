@@ -11,7 +11,7 @@ builder.Services.AddSqlite<GameStoreContext>(connString);
 var app = builder.Build();
 
 // Force the app to listen on port 5274
- app.Urls.Add("http://localhost:5274");
+ app.Urls.Add("http://0.0.0.0:5274");
 
 app.MapGamesEndpoints();
 app.MapGenresEndpoints();
