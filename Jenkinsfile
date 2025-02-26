@@ -2,84 +2,51 @@ pipeline {
     agent any
 
     environment {
-        DOTNET_CLI_HOME = '/tmp' // Required for .NET Core in Jenkins environment
-        ASPNETCORE_ENVIRONMENT = 'Production'
-        IMAGE_NAME = 'gamestore-api'
-        DOCKER_IMAGE_TAG = 'latest'
+        // Environment variables for Docker Compose
+        COMPOSE_PROJECT_NAME = 'gamestore' // Unique project name to avoid conflicts
+        COMPOSE_FILE = 'docker-compose.yml' // Path to your docker-compose.yml file
     }
 
     stages {
         stage('Checkout') {
             steps {
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: '*/master']],
-                    userRemoteConfigs: [[
-                        url: 'https://github.com/oshadakavinda/Game-Store',
-                        credentialsId: 'your-credentials-id' // Add credentials if the repo is private
-                    ]],
-                    extensions: [[
-                        $class: 'CloneOption',
-                        timeout: 30, // Increase timeout
-                        shallow: true, // Enable shallow clone
-                        depth: 1 // Clone only the latest commit
-                    ]]
-                ])
+                // Pull the code from the Git repository
+                checkout scm
             }
         }
 
-        stage('Restore Dependencies') {
+        stage('Build Docker Images') {
             steps {
                 script {
-                    sh 'dotnet restore'
+                    // Build Docker images using docker-compose
+                    sh 'docker-compose build'
                 }
             }
         }
 
-        stage('Build') {
+        stage('Start Containers') {
             steps {
                 script {
-                    sh 'dotnet build -c Release'
+                    // Start the containers in detached mode
+                    sh 'docker-compose up -d'
                 }
             }
         }
 
-        stage('Test') {
+        stage('Run Tests') {
             steps {
                 script {
-                    sh 'dotnet test'
+                    // Optionally, run tests inside the containers
+                    sh 'docker-compose exec backend dotnet test'
                 }
             }
         }
 
-        stage('Publish') {
+        stage('Verify Services') {
             steps {
                 script {
-                    sh 'dotnet publish -c Release -o ./publish'
-                }
-            }
-        }
-
-        stage('Docker Build & Push (Optional)') {
-            steps {
-                script {
-                    sh 'docker build -t $IMAGE_NAME:$DOCKER_IMAGE_TAG .'
-                    // Optionally, push to Docker registry
-                    // sh 'docker push $IMAGE_NAME:$DOCKER_IMAGE_TAG'
-                }
-            }
-        }
-
-        stage('Deploy to Server') {
-            steps {
-                script {
-                    // You can deploy your app via Docker or directly to a server
-                    // If you're deploying with Docker:
-                    // sh 'docker run -d -p 5274:5274 $IMAGE_NAME:$DOCKER_IMAGE_TAG'
-                    
-                    // If you're not using Docker, you can deploy directly to the server:
-                    // sh 'scp -r ./publish user@your-server:/path/to/deployment/folder'
-                    // sh 'ssh user@your-server "systemctl restart gamestore-api"'
+                    // Verify that the services are running
+                    sh 'docker-compose ps'
                 }
             }
         }
@@ -87,6 +54,10 @@ pipeline {
 
     post {
         always {
+            // Clean up Docker Compose resources
+            script {
+                sh 'docker-compose down'
+            }
             echo 'Cleaning up...'
         }
         success {
