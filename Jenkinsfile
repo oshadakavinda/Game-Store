@@ -13,7 +13,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                bat 'dotnet --version'
+                sh 'dotnet --version'
             }
         }
 
