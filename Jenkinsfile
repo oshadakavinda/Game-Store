@@ -11,14 +11,25 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                // Pull the code from the Git repository
-                checkout scm
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: '*/master']],
+                    userRemoteConfigs: [[
+                        url: 'https://github.com/oshadakavinda/Game-Store',
+                        credentialsId: 'your-credentials-id' // Add credentials if the repo is private
+                    ]],
+                    extensions: [[
+                        $class: 'CloneOption',
+                        timeout: 30, // Increase timeout
+                        shallow: true, // Enable shallow clone
+                        depth: 1 // Clone only the latest commit
+                    ]]
+                ])
             }
         }
 
         stage('Restore Dependencies') {
             steps {
-                // Restore .NET Core dependencies
                 script {
                     sh 'dotnet restore'
                 }
@@ -27,7 +38,6 @@ pipeline {
 
         stage('Build') {
             steps {
-                // Build the application
                 script {
                     sh 'dotnet build -c Release'
                 }
@@ -36,7 +46,6 @@ pipeline {
 
         stage('Test') {
             steps {
-                // Run unit tests
                 script {
                     sh 'dotnet test'
                 }
@@ -45,7 +54,6 @@ pipeline {
 
         stage('Publish') {
             steps {
-                // Publish the application (ready for deployment)
                 script {
                     sh 'dotnet publish -c Release -o ./publish'
                 }
@@ -55,7 +63,6 @@ pipeline {
         stage('Docker Build & Push (Optional)') {
             steps {
                 script {
-                    // Build Docker image (if you are using Docker)
                     sh 'docker build -t $IMAGE_NAME:$DOCKER_IMAGE_TAG .'
                     // Optionally, push to Docker registry
                     // sh 'docker push $IMAGE_NAME:$DOCKER_IMAGE_TAG'
@@ -80,7 +87,6 @@ pipeline {
 
     post {
         always {
-            // Clean up or send notifications
             echo 'Cleaning up...'
         }
         success {
