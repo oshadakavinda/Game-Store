@@ -2,15 +2,13 @@ pipeline {
     agent any
 
     environment {
-        // Environment variables for Docker Compose
-        COMPOSE_PROJECT_NAME = 'gamestore' // Unique project name to avoid conflicts
-        COMPOSE_FILE = 'docker-compose.yml' // Path to your docker-compose.yml file
+        COMPOSE_PROJECT_NAME = 'gamestore'
+        COMPOSE_FILE = 'docker-compose.yml'
     }
 
     stages {
         stage('Checkout') {
             steps {
-                // Pull the code from the Git repository
                 checkout scm
             }
         }
@@ -18,8 +16,7 @@ pipeline {
         stage('Build Docker Images') {
             steps {
                 script {
-                    // Build Docker images using docker-compose
-                    sh 'docker-compose build'
+                    sh 'docker compose build'
                 }
             }
         }
@@ -27,8 +24,7 @@ pipeline {
         stage('Start Containers') {
             steps {
                 script {
-                    // Start the containers in detached mode
-                    sh 'docker-compose up -d'
+                    sh 'docker compose up -d'
                 }
             }
         }
@@ -36,8 +32,7 @@ pipeline {
         stage('Run Tests') {
             steps {
                 script {
-                    // Optionally, run tests inside the containers
-                    sh 'docker-compose exec backend dotnet test'
+                    sh 'docker compose exec backend dotnet test'
                 }
             }
         }
@@ -45,7 +40,6 @@ pipeline {
         stage('Verify Services') {
             steps {
                 script {
-                    // Verify that the services are running
                     sh 'docker compose ps'
                 }
             }
@@ -54,9 +48,8 @@ pipeline {
 
     post {
         always {
-            // Clean up Docker Compose resources
             script {
-                sh 'docker-compose down'
+                sh 'docker compose down'
             }
             echo 'Cleaning up...'
         }
