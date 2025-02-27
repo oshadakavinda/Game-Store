@@ -4,28 +4,21 @@
 
 1. Ubuntu 20.04 or later
 2. Jenkins installed
-3. Docker and Docker Compose installed
-4. Git installed
+3. Docker and Docker Compose installed (APT version, not snap)
 
 ## Installation Steps
 
-1. Install Jenkins:
+1. Remove snap version of Docker (if installed):
    ```bash
-   # Add Jenkins repository
-   curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee \
-     /usr/share/keyrings/jenkins-keyring.asc > /dev/null
-   echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \
-     https://pkg.jenkins.io/debian-stable binary/ | sudo tee \
-     /etc/apt/sources.list.d/jenkins.list > /dev/null
-
-   # Update and install Jenkins
-   sudo apt-get update
-   sudo apt-get install jenkins
+   sudo snap remove docker
    ```
 
-2. Install Docker:
+2. Install Docker using apt:
    ```bash
-   # Install Docker
+   # Remove old versions
+   sudo apt-get remove docker docker-engine docker.io containerd runc
+
+   # Install prerequisites
    sudo apt-get update
    sudo apt-get install \
        ca-certificates \
@@ -37,7 +30,7 @@
    sudo mkdir -m 0755 -p /etc/apt/keyrings
    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 
-   # Set up repository
+   # Add Docker repository
    echo \
      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
      $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
@@ -47,167 +40,68 @@
    sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
    ```
 
-3. Configure Permissions:
+3. Configure Jenkins user:
    ```bash
-   # Add Jenkins user to docker group
+   # Stop Jenkins
+   sudo systemctl stop jenkins
+
+   # Move Jenkins home to /home directory
+   sudo usermod -d /home/jenkins jenkins
+   sudo mkdir -p /home/jenkins
+   sudo chown -R jenkins:jenkins /home/jenkins
+
+   # Add Jenkins to Docker group
    sudo usermod -aG docker jenkins
 
    # Restart Jenkins
-   sudo systemctl restart jenkins
+   sudo systemctl start jenkins
    ```
 
-## Required Jenkins Plugins
-
-Install these plugins through Jenkins Plugin Manager:
-- Docker Pipeline
-- Docker
-- Git
-- Pipeline
-- GitHub (if using GitHub)
-
-## Jenkins Configuration
-
-1. Create Pipeline Job:
-   - Navigate to Jenkins dashboard
-   - Click "New Item"
-   - Enter name (e.g., "GameStore-Pipeline")
-   - Select "Pipeline"
-   - Click "OK"
-
-2. Configure Source Code Management:
-   - Select Git
-   - Enter repository URL
-   - Configure credentials if required
-   - Branch Specifier: */master (or your main branch)
-
-3. Configure Pipeline:
-   - Definition: Pipeline script from SCM
-   - SCM: Git
-   - Repository URL: Your repository URL
-   - Script Path: Jenkinsfile
-
-## Environment Setup
-
-1. Create Required Directories:
+4. Set proper permissions:
    ```bash
-   sudo mkdir -p /var/jenkins/workspace/temp
-   sudo chown -R jenkins:jenkins /var/jenkins
+   # Set Docker socket permissions
+   sudo chmod 666 /var/run/docker.sock
+
+   # Set workspace permissions
+   sudo mkdir -p /home/jenkins/workspace
+   sudo chown -R jenkins:jenkins /home/jenkins/workspace
    ```
 
-2. Verify Installations:
+5. Verify installations:
    ```bash
    # Check Docker
-   docker --version
-   docker-compose --version
+   sudo -u jenkins docker info
+   sudo -u jenkins docker-compose version
    
    # Check Jenkins
-   systemctl status jenkins
-   
-   # Check Git
-   git --version
+   sudo systemctl status jenkins
    ```
 
 ## Troubleshooting
 
-1. Permission Issues:
+1. If Docker commands fail:
    ```bash
-   # Fix Docker permissions
-   sudo chmod 666 /var/run/docker.sock
-   
-   # Fix workspace permissions
-   sudo chown -R jenkins:jenkins /var/jenkins/workspace
-   ```
+   # Verify Docker service
+   sudo systemctl status docker
 
-2. Docker Issues:
-   ```bash
    # Restart Docker
    sudo systemctl restart docker
-   
-   # Check Docker status
-   sudo systemctl status docker
-   
-   # View Docker logs
-   sudo journalctl -fu docker
+
+   # Verify Jenkins user in Docker group
+   groups jenkins
    ```
 
-3. Jenkins Issues:
+2. If workspace issues occur:
    ```bash
-   # View Jenkins logs
-   sudo journalctl -fu jenkins
-   
-   # Restart Jenkins
-   sudo systemctl restart jenkins
+   # Reset workspace permissions
+   sudo chown -R jenkins:jenkins /home/jenkins/workspace
+   sudo chmod -R 755 /home/jenkins/workspace
    ```
 
-## Best Practices
-
-1. Security:
-   - Use Jenkins credentials store
-   - Regularly update system packages
-   - Keep Docker images updated
-   - Use secure registries
-
-2. Maintenance:
-   - Regular backup of Jenkins configuration
-   - Clean up old builds
-   - Monitor disk space
-   - Regular Docker cleanup
-
-3. Performance:
-   - Configure proper resource limits
-   - Regular cleanup of Docker resources
-   - Monitor system resources
-
-## Monitoring
-
-1. System Monitoring:
+3. If Docker socket issues:
    ```bash
-   # Monitor system resources
-   htop
-   
-   # Monitor Docker
-   docker stats
-   
-   # Check disk space
-   df -h
+   # Reset Docker socket permissions
+   sudo chmod 666 /var/run/docker.sock
    ```
 
-2. Log Monitoring:
-   ```bash
-   # Jenkins logs
-   tail -f /var/log/jenkins/jenkins.log
-   
-   # Docker logs
-   journalctl -fu docker
-   ```
-
-## Support
-
-For issues:
-1. Check application logs:
-   ```bash
-   # Jenkins logs
-   sudo tail -f /var/log/jenkins/jenkins.log
-   
-   # Docker logs
-   docker logs <container-id>
-   ```
-
-2. System logs:
-   ```bash
-   # System logs
-   sudo journalctl -xe
-   ```
-
-3. Check permissions:
-   ```bash
-   # List permissions
-   ls -la /var/run/docker.sock
-   ls -la /var/jenkins/workspace
-   ```
-
-4. Verify services:
-   ```bash
-   # Check service status
-   sudo systemctl status jenkins
-   sudo systemctl status docker
+For detailed setup instructions and pipeline configuration, refer to the previous sections in this README.

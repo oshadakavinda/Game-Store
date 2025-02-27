@@ -7,10 +7,11 @@ pipeline {
     }
 
     environment {
-        DOTNET_CLI_HOME = '/var/jenkins/workspace/temp'
+        DOTNET_CLI_HOME = '/home/jenkins/workspace/temp'
         ASPNETCORE_ENVIRONMENT = 'Production'
         COMPOSE_PROJECT_NAME = "gamestore-${BUILD_NUMBER}"
         DOCKER_BUILDKIT = '1'
+        HOME = '/home/jenkins'  // Set HOME explicitly
     }
 
     stages {
@@ -41,12 +42,16 @@ pipeline {
         stage('Prepare Environment') {
             steps {
                 script {
-                    // Verify Docker is running
-                    sh 'docker info'
-                    // Clean up Docker resources
+                    // Verify Docker is running and accessible
                     sh '''
-                        docker system prune -f
-                        docker volume prune -f
+                        # Verify Docker daemon is running
+                        sudo systemctl status docker || (sudo systemctl start docker && sleep 10)
+                        
+                        # Verify Docker permissions
+                        sudo chmod 666 /var/run/docker.sock
+                        
+                        # Test Docker access
+                        docker info
                     '''
                 }
             }
@@ -57,7 +62,13 @@ pipeline {
                 script {
                     // Build with retry and no cache
                     retry(2) {
-                        sh 'docker-compose build --no-cache'
+                        sh '''
+                            # Ensure docker-compose is available
+                            docker-compose version
+                            
+                            # Build the images
+                            docker-compose build --no-cache
+                        '''
                     }
                 }
             }
@@ -67,13 +78,16 @@ pipeline {
             steps {
                 script {
                     // Start containers
-                    sh 'docker-compose up -d'
-                    
-                    // Wait for services to be healthy
-                    sh 'sleep 45'
-                    
-                    // Verify services are running
                     sh '''
+                        # Stop any existing containers
+                        docker-compose down -v || true
+                        
+                        # Start new containers
+                        docker-compose up -d
+                        
+                        # Wait for services to be healthy
+                        sleep 45
+                        
                         # Check if containers are running
                         docker-compose ps --filter status=running | grep "gamestore" || exit 1
                         
@@ -92,13 +106,11 @@ pipeline {
         always {
             script {
                 // Stop and remove containers, networks, and volumes
-                sh 'docker-compose down -v'
-                
-                // Clean up Docker resources
                 sh '''
-                    docker image prune -f
-                    docker volume prune -f
-                    docker system prune -f
+                    docker-compose down -v || true
+                    docker image prune -f || true
+                    docker volume prune -f || true
+                    docker system prune -f || true
                 '''
                 
                 // Clean workspace
