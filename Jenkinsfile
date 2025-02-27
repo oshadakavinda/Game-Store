@@ -2,9 +2,7 @@ pipeline {
     agent any
 
     options {
-        // Only keep the 5 most recent builds
         buildDiscarder(logRotator(numToKeepStr: '5'))
-        // Skip default checkout to use our optimized checkout
         skipDefaultCheckout(true)
     }
 
@@ -12,9 +10,7 @@ pipeline {
         stage('Optimized Checkout') {
             steps {
                 script {
-                    // Clean workspace before checkout
                     cleanWs()
-                    // Shallow clone with depth 1 and single branch
                     checkout([
                         $class: 'GitSCM',
                         branches: [[name: '*/master']],
@@ -35,22 +31,54 @@ pipeline {
             }
         }
 
+        stage('Debug Directory') {
+            steps {
+                script {
+                    // List contents of directories to verify files
+                    bat '''
+                        echo "Listing GameStore.Frontend directory:"
+                        dir GameStore.Frontend
+                        echo "Listing GameStore.Api directory:"
+                        dir GameStore.Api
+                    '''
+                }
+            }
+        }
+
         stage('Build and Start Services') {
             steps {
                 script {
                     try {
-                        // Stop any running containers first
+                        // Print docker-compose version and config
+                        bat '''
+                            echo "Docker Compose Version:"
+                            docker-compose version
+                            echo "Docker Compose Config:"
+                            docker-compose config
+                        '''
+
+                        // Stop any running containers
                         bat 'docker-compose down -v'
                         
-                        // Build and start all services using docker-compose
-                        bat 'docker-compose build --no-cache'
+                        // Build with debug output
+                        bat 'docker-compose build --no-cache --progress=plain'
                         bat 'docker-compose up -d'
                         
-                        // Give services some time to start
+                        // Show running containers
+                        bat '''
+                            echo "Running Containers:"
+                            docker ps
+                        '''
+                        
                         bat 'timeout /t 30 /nobreak'
                     } catch (Exception e) {
                         echo "Error during build and start: ${e.message}"
-                        bat 'docker-compose logs'
+                        bat '''
+                            echo "Docker Compose Logs:"
+                            docker-compose logs
+                            echo "Docker PS:"
+                            docker ps -a
+                        '''
                         currentBuild.result = 'FAILURE'
                         error("Build and start services failed")
                     }
@@ -108,14 +136,9 @@ pipeline {
         always {
             script {
                 try {
-                    // Print logs before cleanup
                     bat 'docker-compose logs'
-                    
-                    // Clean up containers and volumes
                     bat 'docker-compose down -v'
                     bat 'docker system prune -f'
-                    
-                    // Clean workspace after build
                     cleanWs()
                 } catch (Exception e) {
                     echo "Warning during cleanup: ${e.message}"
