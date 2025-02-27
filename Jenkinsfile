@@ -4,7 +4,6 @@ pipeline {
     options {
         timeout(time: 1, unit: 'HOURS')
         retry(3)
-        cleanWs()
     }
 
     environment {
@@ -15,6 +14,12 @@ pipeline {
     }
 
     stages {
+        stage('Clean Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+
         stage('Checkout') {
             steps {
                 script {
