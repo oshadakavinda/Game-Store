@@ -8,12 +8,27 @@ pipeline {
             }
         }
 
+        stage('Rename Frontend Dockerfile') {
+            steps {
+                script {
+                    // Rename DockerFile to Dockerfile for consistency
+                    bat 'if exist GameStore.Frontend\\DockerFile rename GameStore.Frontend\\DockerFile Dockerfile'
+                }
+            }
+        }
+
         stage('Build and Start Services') {
             steps {
                 script {
-                    // Build and start all services using docker-compose
-                    bat 'docker-compose build'
-                    bat 'docker-compose up -d'
+                    try {
+                        // Build and start all services using docker-compose
+                        bat 'docker-compose build'
+                        bat 'docker-compose up -d'
+                    } catch (Exception e) {
+                        echo "Error during build and start: ${e.message}"
+                        currentBuild.result = 'FAILURE'
+                        error("Build and start services failed")
+                    }
                 }
             }
         }
@@ -61,11 +76,14 @@ pipeline {
     post {
         always {
             script {
-                // Clean up containers and volumes
-                bat '''
-                    docker-compose down -v
-                    docker system prune -f -y
-                '''
+                try {
+                    // Clean up containers and volumes
+                    bat 'docker-compose down -v'
+                    // Remove -y flag as it's not supported
+                    bat 'docker system prune -f'
+                } catch (Exception e) {
+                    echo "Warning during cleanup: ${e.message}"
+                }
             }
         }
         success {
