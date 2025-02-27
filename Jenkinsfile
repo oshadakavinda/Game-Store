@@ -1,10 +1,37 @@
 pipeline {
     agent any
 
+    options {
+        // Only keep the 5 most recent builds
+        buildDiscarder(logRotator(numToKeepStr: '5'))
+        // Skip default checkout to use our optimized checkout
+        skipDefaultCheckout(true)
+    }
+
     stages {
-        stage('Checkout') {
+        stage('Optimized Checkout') {
             steps {
-                checkout scm
+                script {
+                    // Clean workspace before checkout
+                    cleanWs()
+                    // Shallow clone with depth 1 and single branch
+                    checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: '*/master']],
+                        extensions: [
+                            [$class: 'CloneOption',
+                             depth: 1,
+                             noTags: true,
+                             shallow: true,
+                             timeout: 30],
+                            [$class: 'GitLFSPull'],
+                            [$class: 'CleanBeforeCheckout']
+                        ],
+                        userRemoteConfigs: [[
+                            url: 'https://github.com/oshadakavinda/Game-Store.git'
+                        ]]
+                    ])
+                }
             }
         }
 
@@ -23,7 +50,7 @@ pipeline {
                         bat 'timeout /t 30 /nobreak'
                     } catch (Exception e) {
                         echo "Error during build and start: ${e.message}"
-                        bat 'docker-compose logs'  // Print logs for debugging
+                        bat 'docker-compose logs'
                         currentBuild.result = 'FAILURE'
                         error("Build and start services failed")
                     }
@@ -87,6 +114,9 @@ pipeline {
                     // Clean up containers and volumes
                     bat 'docker-compose down -v'
                     bat 'docker system prune -f'
+                    
+                    // Clean workspace after build
+                    cleanWs()
                 } catch (Exception e) {
                     echo "Warning during cleanup: ${e.message}"
                 }
