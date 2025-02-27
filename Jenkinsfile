@@ -1,27 +1,66 @@
 pipeline {
     agent any
 
+    options {
+        // Add timeout and retry options for better stability
+        timeout(time: 1, unit: 'HOURS')
+        retry(3)
+        // Clean workspace before build
+        cleanWs()
+    }
+
     environment {
         DOTNET_CLI_HOME = 'C:\\Jenkins\\workspace\\temp'
         ASPNETCORE_ENVIRONMENT = 'Production'
         COMPOSE_PROJECT_NAME = "gamestore-${BUILD_NUMBER}"
         DOCKER_BUILDKIT = '1'
-        // Windows-specific path handling
         COMPOSE_CONVERT_WINDOWS_PATHS = 1
+        // Git specific configurations
+        GIT_SSL_NO_VERIFY = 'true'
+        GIT_TIMEOUT = '30m'
     }
 
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
+                script {
+                    // Configure Git for better stability
+                    bat '''
+                        git config --system core.longpaths true
+                        git config --system http.sslverify false
+                        git config --system http.postBuffer 524288000
+                        git config --system core.compression 9
+                    '''
+                    
+                    // Perform checkout with retry
+                    retry(3) {
+                        checkout scm
+                    }
+                }
+            }
+        }
+
+        stage('Prepare Environment') {
+            steps {
+                script {
+                    // Verify Docker is running
+                    bat 'docker info'
+                    // Clean up Docker resources
+                    bat '''
+                        docker system prune -f
+                        docker volume prune -f
+                    '''
+                }
             }
         }
 
         stage('Docker Compose Build') {
             steps {
                 script {
-                    // Windows command for docker-compose build
-                    bat 'docker-compose build --no-cache'
+                    // Build with retry and no cache
+                    retry(2) {
+                        bat 'docker-compose build --no-cache'
+                    }
                 }
             }
         }
@@ -29,13 +68,13 @@ pipeline {
         stage('Docker Compose Up') {
             steps {
                 script {
-                    // Start the containers in detached mode
+                    // Start containers
                     bat 'docker-compose up -d'
                     
-                    // Wait for services to be healthy (Windows sleep command)
+                    // Wait for services to be healthy
                     bat 'timeout /t 45 /nobreak'
                     
-                    // Verify services are running (Windows commands)
+                    // Verify services are running
                     bat '''
                         @echo off
                         
@@ -59,10 +98,11 @@ pipeline {
                 // Stop and remove containers, networks, and volumes
                 bat 'docker-compose down -v'
                 
-                // Clean up any dangling images and volumes (Windows commands)
+                // Clean up Docker resources
                 bat '''
                     docker image prune -f
                     docker volume prune -f
+                    docker system prune -f
                 '''
                 
                 // Clean workspace
@@ -70,10 +110,13 @@ pipeline {
             }
         }
         success {
-            echo 'Docker Compose deployment successful!'
+            echo 'Pipeline completed successfully!'
         }
         failure {
-            echo 'Docker Compose deployment failed!'
+            echo 'Pipeline failed! Check logs for details.'
+        }
+        unstable {
+            echo 'Pipeline is unstable. Check test results and logs.'
         }
     }
 }

@@ -17,32 +17,45 @@
 
 ## Windows-Specific Setup
 
-1. Install Docker Desktop for Windows:
+1. Install Git for Windows:
+   - Download from https://git-scm.com/download/win
+   - During installation:
+     - Select "Use Git from the Windows Command Prompt"
+     - Select "Checkout as-is, commit as-is" for line endings
+     - Enable Git Credential Manager
+
+2. Configure Git in Jenkins:
+   - Go to Manage Jenkins → Configure System
+   - Find Git section
+   - Set "Path to Git executable" to: `C:\Program Files\Git\bin\git.exe`
+   - Save configuration
+
+3. Configure Git Global Settings:
+   ```batch
+   git config --system core.longpaths true
+   git config --system http.sslverify false
+   git config --system http.postBuffer 524288000
+   ```
+
+4. Install Docker Desktop for Windows:
    - Download from https://www.docker.com/products/docker-desktop
    - Install and enable WSL 2 if prompted
    - Start Docker Desktop
    - Verify Docker is running: `docker --version`
 
-2. Install Jenkins for Windows:
-   - Download the Windows installer from https://jenkins.io/download/
-   - Run the installer and follow the setup wizard
-   - Note the initial admin password location
-   - Access Jenkins at http://localhost:8080
-
-3. Configure Jenkins Service Account:
+5. Configure Jenkins Service:
    - Open Services (services.msc)
    - Find Jenkins service
    - Right-click → Properties → Log On tab
-   - Select "This account" and use an account with Docker permissions
+   - Select "This account" and use an account with:
+     - Docker permissions
+     - Git access permissions
+     - Admin rights
    - Restart Jenkins service
 
-4. Configure Docker Desktop Settings:
-   - Enable "Expose daemon on tcp://localhost:2375 without TLS"
-   - In General settings, enable "Use Docker Compose V2"
+## Jenkins Pipeline Setup
 
-## Jenkins Configuration Steps
-
-1. Create a new Pipeline job:
+1. Create new Pipeline job:
    - Open Jenkins at http://localhost:8080
    - Click "New Item"
    - Enter name (e.g., "GameStore-Pipeline")
@@ -53,112 +66,104 @@
    - Select Git
    - Enter your repository URL
    - Configure credentials if required
+   - Additional Git settings:
+     - Timeout (minutes): 10
+     - Set shallow clone depth: 1
+     - Check "Clean before checkout"
 
 3. Configure Pipeline:
    - Definition: Pipeline script from SCM
    - SCM: Git
    - Repository URL: Your repository URL
    - Script Path: Jenkinsfile
+   - Additional Behaviors:
+     - Add "Clean before checkout"
+     - Add "Prune stale remote-tracking branches"
 
-## Environment Variables in Jenkins
+## Troubleshooting Git Issues
+
+1. If "git fetch" fails:
+   ```batch
+   # Clear Git cache
+   cd C:\ProgramData\Jenkins\.jenkins\workspace
+   git clean -fdx
+   git reset --hard
+   
+   # Increase Git buffer size
+   git config --system http.postBuffer 524288000
+   git config --system core.compression 9
+   
+   # Disable SSL verification (if needed)
+   git config --system http.sslVerify false
+   ```
+
+2. Network Issues:
+   - Check proxy settings
+   - Try with SSL verification disabled
+   - Increase timeout values
+   - Use shallow cloning
+
+3. Workspace Issues:
+   - Clean workspace before build
+   - Use shorter paths
+   - Enable long path support
+
+## Environment Variables
 
 Configure these system environment variables in Jenkins:
 1. Go to Manage Jenkins → System Configuration → System
 2. Add the following environment variables:
-   - DOCKER_HOST=tcp://localhost:2375
-   - COMPOSE_CONVERT_WINDOWS_PATHS=1
-   - DOTNET_CLI_HOME=C:\\Jenkins\\workspace\\temp
+   ```
+   DOCKER_HOST=tcp://localhost:2375
+   COMPOSE_CONVERT_WINDOWS_PATHS=1
+   GIT_SSL_NO_VERIFY=true
+   DOTNET_CLI_HOME=C:\\Jenkins\\workspace\\temp
+   ```
 
 ## Running the Pipeline
 
 1. Verify Prerequisites:
-   ```powershell
-   # Check Docker
+   ```batch
+   git --version
    docker --version
    docker-compose --version
-   
-   # Check Docker daemon
-   docker info
    ```
 
 2. Start the Pipeline:
    - Open the project in Jenkins
    - Click "Build Now"
-
-3. Monitor Build:
-   - Click on the build number
-   - Click "Console Output" to view progress
-
-## Troubleshooting Windows-Specific Issues
-
-1. Docker Connection Issues:
-   - Ensure Docker Desktop is running
-   - Verify Docker daemon is exposed (tcp://localhost:2375)
-   - Check Jenkins service has proper permissions
-
-2. Path Issues:
-   - Ensure COMPOSE_CONVERT_WINDOWS_PATHS=1 is set
-   - Use double backslashes in Windows paths
-   - Check workspace permissions
-
-3. Permission Issues:
-   - Run Jenkins service as administrator
-   - Add Jenkins user to Docker users group
-   - Verify folder permissions
-
-4. Docker Desktop Issues:
-   - Restart Docker Desktop
-   - Check WSL 2 integration
-   - Verify resource allocation
+   - Monitor Console Output
 
 ## Best Practices for Windows
 
-1. File System:
-   - Use short paths when possible
-   - Avoid spaces in paths
-   - Use Windows-style paths in configurations
+1. Git:
+   - Use shallow clones
+   - Enable long paths
+   - Configure appropriate timeouts
+   - Clean workspace regularly
 
 2. Docker:
    - Regular cleanup of Windows containers
    - Monitor Docker Desktop resources
    - Use Windows containers when needed
 
-3. Security:
-   - Secure Docker daemon
-   - Use Windows credential manager
-   - Regular Windows updates
-
-## Maintenance
-
-1. Regular Tasks:
-   - Clean Jenkins workspace
-   - Prune Docker resources
-   - Update Docker Desktop
-   - Update Jenkins plugins
-
-2. Monitoring:
-   - Watch Docker Desktop resources
-   - Monitor disk space
-   - Check Jenkins logs
+3. Jenkins:
+   - Run as administrator
+   - Use short workspace paths
+   - Regular workspace cleanup
 
 ## Support
 
-For issues with the Windows Jenkins pipeline:
-1. Check Jenkins console output
-2. Review Docker Desktop logs
-3. Verify Windows Event Viewer
-4. Check network connectivity
-5. Verify Docker Desktop status
+For Git connectivity issues:
+1. Check network connectivity
+2. Verify Git credentials
+3. Clear Git cache
+4. Check workspace permissions
+5. Review Git configuration
+6. Monitor resource usage
 
-## Additional Windows Tools
-
-1. Recommended Tools:
-   - Windows Terminal
-   - PowerShell 7+
-   - WSL 2
-   - Visual Studio Code
-
-2. Debugging Tools:
-   - Docker Desktop Dashboard
-   - Windows Resource Monitor
-   - Process Explorer
+For additional assistance:
+1. Check Jenkins logs: `C:\ProgramData\Jenkins\.jenkins\logs`
+2. Review Git error messages
+3. Verify system requirements
+4. Check network stability
