@@ -2,11 +2,12 @@ pipeline {
     agent any
 
     environment {
-         DOCKER_HOST = "tcp://172.18.0.4:2375"
-        BACKEND_IMAGE = 'game-store-backend'
-        FRONTEND_IMAGE = 'game-store-frontend'
-        BACKEND_CONTAINER = 'gamestore-backend-container'
-        FRONTEND_CONTAINER = 'gamestore-frontend-container'
+        DOTNET_CLI_HOME = 'C:\\Jenkins\\workspace\\temp'
+        ASPNETCORE_ENVIRONMENT = 'Production'
+        COMPOSE_PROJECT_NAME = "gamestore-${BUILD_NUMBER}"
+        DOCKER_BUILDKIT = '1'
+        // Windows-specific path handling
+        COMPOSE_CONVERT_WINDOWS_PATHS = 1
     }
 
     stages {
@@ -16,51 +17,37 @@ pipeline {
             }
         }
 
-        stage('Build Backend Image') {
+        stage('Docker Compose Build') {
             steps {
                 script {
-                    sh 'docker build -t $BACKEND_IMAGE GameStore.Api'
+                    // Windows command for docker-compose build
+                    bat 'docker-compose build --no-cache'
                 }
             }
         }
 
-        stage('Build Frontend Image') {
+        stage('Docker Compose Up') {
             steps {
                 script {
-                    sh 'docker build -t $FRONTEND_IMAGE GameStore.Frontend'
-                }
-            }
-        }
-
-        stage('Run Backend Container') {
-            steps {
-                script {
-                    sh 'docker run -d --name $BACKEND_CONTAINER -p 5000:5000 $BACKEND_IMAGE'
-                }
-            }
-        }
-
-        stage('Run Frontend Container') {
-            steps {
-                script {
-                    sh 'docker run -d --name $FRONTEND_CONTAINER -p 3000:3000 $FRONTEND_IMAGE'
-                }
-            }
-        }
-
-        stage('Run Backend Tests') {
-            steps {
-                script {
-                    sh 'docker exec $BACKEND_CONTAINER dotnet test'
-                }
-            }
-        }
-
-        stage('Verify Containers') {
-            steps {
-                script {
-                    sh 'docker ps | grep $BACKEND_CONTAINER'
-                    sh 'docker ps | grep $FRONTEND_CONTAINER'
+                    // Start the containers in detached mode
+                    bat 'docker-compose up -d'
+                    
+                    // Wait for services to be healthy (Windows sleep command)
+                    bat 'timeout /t 45 /nobreak'
+                    
+                    // Verify services are running (Windows commands)
+                    bat '''
+                        @echo off
+                        
+                        REM Check if containers are running
+                        docker-compose ps --filter status=running | findstr "gamestore" || exit /b 1
+                        
+                        REM Check API availability
+                        curl -f http://localhost:5274/status || exit /b 1
+                        
+                        REM Check Frontend availability
+                        curl -f http://localhost:5002 || exit /b 1
+                    '''
                 }
             }
         }
@@ -69,25 +56,24 @@ pipeline {
     post {
         always {
             script {
-                // Stop and remove backend container
-                sh 'docker stop $BACKEND_CONTAINER || true'
-                sh 'docker rm $BACKEND_CONTAINER || true'
-
-                // Stop and remove frontend container
-                sh 'docker stop $FRONTEND_CONTAINER || true'
-                sh 'docker rm $FRONTEND_CONTAINER || true'
-
-                // Remove images
-                sh 'docker rmi $BACKEND_IMAGE || true'
-                sh 'docker rmi $FRONTEND_IMAGE || true'
+                // Stop and remove containers, networks, and volumes
+                bat 'docker-compose down -v'
+                
+                // Clean up any dangling images and volumes (Windows commands)
+                bat '''
+                    docker image prune -f
+                    docker volume prune -f
+                '''
+                
+                // Clean workspace
+                cleanWs()
             }
-            echo 'Cleaned up Docker resources.'
         }
         success {
-            echo 'Build and deployment successful!'
+            echo 'Docker Compose deployment successful!'
         }
         failure {
-            echo 'Build or deployment failed.'
+            echo 'Docker Compose deployment failed!'
         }
     }
 }

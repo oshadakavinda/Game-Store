@@ -1,23 +1,51 @@
-# Jenkins Setup Guide for GameStore
+# Jenkins Setup Guide for GameStore (Windows)
 
 ## Prerequisites
 
-1. Jenkins server installed and running
-2. .NET SDK 8.0 installed on Jenkins agent
-3. Git installed on Jenkins agent
+1. Windows 10/11
+2. Jenkins for Windows installed
+3. Docker Desktop for Windows installed and running
+4. Git for Windows installed
 
 ## Required Jenkins Plugins
 
-- .NET SDK Plugin
+- Docker Pipeline Plugin
+- Docker Plugin
 - Git Plugin
 - Pipeline Plugin
 - GitHub Plugin (if using GitHub)
 
+## Windows-Specific Setup
+
+1. Install Docker Desktop for Windows:
+   - Download from https://www.docker.com/products/docker-desktop
+   - Install and enable WSL 2 if prompted
+   - Start Docker Desktop
+   - Verify Docker is running: `docker --version`
+
+2. Install Jenkins for Windows:
+   - Download the Windows installer from https://jenkins.io/download/
+   - Run the installer and follow the setup wizard
+   - Note the initial admin password location
+   - Access Jenkins at http://localhost:8080
+
+3. Configure Jenkins Service Account:
+   - Open Services (services.msc)
+   - Find Jenkins service
+   - Right-click → Properties → Log On tab
+   - Select "This account" and use an account with Docker permissions
+   - Restart Jenkins service
+
+4. Configure Docker Desktop Settings:
+   - Enable "Expose daemon on tcp://localhost:2375 without TLS"
+   - In General settings, enable "Use Docker Compose V2"
+
 ## Jenkins Configuration Steps
 
-1. Create a new Pipeline job in Jenkins:
+1. Create a new Pipeline job:
+   - Open Jenkins at http://localhost:8080
    - Click "New Item"
-   - Enter a name (e.g., "GameStore-Pipeline")
+   - Enter name (e.g., "GameStore-Pipeline")
    - Select "Pipeline"
    - Click "OK"
 
@@ -32,110 +60,105 @@
    - Repository URL: Your repository URL
    - Script Path: Jenkinsfile
 
-## Environment Setup
+## Environment Variables in Jenkins
 
-1. Install .NET SDK 8.0 on Jenkins agent:
-   ```bash
-   wget https://download.visualstudio.microsoft.com/download/pr/xxx/dotnet-sdk-8.0.xxx-linux-x64.tar.gz
-   mkdir -p $HOME/dotnet && tar zxf dotnet-sdk-8.0.xxx-linux-x64.tar.gz -C $HOME/dotnet
-   export DOTNET_ROOT=$HOME/dotnet
-   export PATH=$PATH:$HOME/dotnet
+Configure these system environment variables in Jenkins:
+1. Go to Manage Jenkins → System Configuration → System
+2. Add the following environment variables:
+   - DOCKER_HOST=tcp://localhost:2375
+   - COMPOSE_CONVERT_WINDOWS_PATHS=1
+   - DOTNET_CLI_HOME=C:\\Jenkins\\workspace\\temp
+
+## Running the Pipeline
+
+1. Verify Prerequisites:
+   ```powershell
+   # Check Docker
+   docker --version
+   docker-compose --version
+   
+   # Check Docker daemon
+   docker info
    ```
 
-2. Verify installation:
-   ```bash
-   dotnet --version
-   ```
+2. Start the Pipeline:
+   - Open the project in Jenkins
+   - Click "Build Now"
 
-## Pipeline Stages
+3. Monitor Build:
+   - Click on the build number
+   - Click "Console Output" to view progress
 
-The pipeline includes the following stages:
+## Troubleshooting Windows-Specific Issues
 
-1. **Checkout**: 
-   - Clones the repository
+1. Docker Connection Issues:
+   - Ensure Docker Desktop is running
+   - Verify Docker daemon is exposed (tcp://localhost:2375)
+   - Check Jenkins service has proper permissions
 
-2. **Restore Dependencies**: 
-   - Restores NuGet packages for both API and Frontend projects
+2. Path Issues:
+   - Ensure COMPOSE_CONVERT_WINDOWS_PATHS=1 is set
+   - Use double backslashes in Windows paths
+   - Check workspace permissions
 
-3. **Build API**: 
-   - Builds the GameStore.Api project in Release configuration
+3. Permission Issues:
+   - Run Jenkins service as administrator
+   - Add Jenkins user to Docker users group
+   - Verify folder permissions
 
-4. **Build Frontend**: 
-   - Builds the GameStore.Frontend project in Release configuration
+4. Docker Desktop Issues:
+   - Restart Docker Desktop
+   - Check WSL 2 integration
+   - Verify resource allocation
 
-5. **Test**: 
-   - Runs unit tests for both projects
+## Best Practices for Windows
 
-6. **Publish**: 
-   - Creates deployment artifacts for both API and Frontend
-   - Output locations:
-     - API: publish/api
-     - Frontend: publish/frontend
+1. File System:
+   - Use short paths when possible
+   - Avoid spaces in paths
+   - Use Windows-style paths in configurations
 
-## Environment Variables
+2. Docker:
+   - Regular cleanup of Windows containers
+   - Monitor Docker Desktop resources
+   - Use Windows containers when needed
 
-Configure the following environment variables in Jenkins:
+3. Security:
+   - Secure Docker daemon
+   - Use Windows credential manager
+   - Regular Windows updates
 
-1. Required Variables:
-   - DOTNET_SDK_VERSION: 8.0
-   - SOLUTION_FILE: GameStore.sln
+## Maintenance
 
-2. Optional Variables (based on environment):
-   - DATABASE_CONNECTION_STRING
-   - API_KEY
-   - DEPLOYMENT_TARGET
+1. Regular Tasks:
+   - Clean Jenkins workspace
+   - Prune Docker resources
+   - Update Docker Desktop
+   - Update Jenkins plugins
 
-## Troubleshooting
-
-1. If build fails with dotnet command not found:
-   - Verify .NET SDK installation
-   - Check PATH environment variable
-
-2. If restore fails:
-   - Check NuGet configuration
-   - Verify network connectivity to NuGet repositories
-
-3. If tests fail:
-   - Check test logs in Jenkins console output
-   - Verify test environment configuration
-
-## Best Practices
-
-1. Source Control:
-   - Always commit Jenkinsfile to source control
-   - Keep sensitive data out of the Jenkinsfile
-
-2. Security:
-   - Use Jenkins credentials store for sensitive data
-   - Regularly update Jenkins and plugins
-   - Implement proper access controls
-
-3. Maintenance:
-   - Regularly clean workspace
-   - Monitor build times
-   - Set up build notifications
-
-## Additional Recommendations
-
-1. Quality Gates:
-   - Add code coverage reporting
-   - Implement static code analysis
-   - Set up security scanning
-
-2. Deployment:
-   - Implement blue-green deployment
-   - Set up automated rollback procedures
-   - Configure deployment notifications
-
-3. Monitoring:
-   - Set up build monitoring
-   - Configure build time alerts
-   - Implement log aggregation
+2. Monitoring:
+   - Watch Docker Desktop resources
+   - Monitor disk space
+   - Check Jenkins logs
 
 ## Support
 
-For issues with the Jenkins pipeline:
+For issues with the Windows Jenkins pipeline:
 1. Check Jenkins console output
-2. Review system logs
-3. Verify environment configurations
+2. Review Docker Desktop logs
+3. Verify Windows Event Viewer
 4. Check network connectivity
+5. Verify Docker Desktop status
+
+## Additional Windows Tools
+
+1. Recommended Tools:
+   - Windows Terminal
+   - PowerShell 7+
+   - WSL 2
+   - Visual Studio Code
+
+2. Debugging Tools:
+   - Docker Desktop Dashboard
+   - Windows Resource Monitor
+   - Process Explorer
