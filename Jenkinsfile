@@ -11,16 +11,11 @@ pipeline {
             steps {
                 script {
                     cleanWs()
+                    // Using full clone since shallow clone is missing files
                     checkout([
                         $class: 'GitSCM',
                         branches: [[name: '*/master']],
                         extensions: [
-                            [$class: 'CloneOption',
-                             depth: 1,
-                             noTags: true,
-                             shallow: true,
-                             timeout: 30],
-                            [$class: 'GitLFSPull'],
                             [$class: 'CleanBeforeCheckout']
                         ],
                         userRemoteConfigs: [[
@@ -34,12 +29,15 @@ pipeline {
         stage('Debug Directory') {
             steps {
                 script {
-                    // List contents of directories to verify files
                     bat '''
-                        echo "Listing GameStore.Frontend directory:"
+                        echo "Current Directory Structure:"
+                        dir /s /b
+                        
+                        echo "Frontend Directory Contents:"
                         dir GameStore.Frontend
-                        echo "Listing GameStore.Api directory:"
-                        dir GameStore.Api
+                        
+                        echo "Frontend Dockerfile:"
+                        type GameStore.Frontend\\Dockerfile
                     '''
                 }
             }
@@ -49,25 +47,16 @@ pipeline {
             steps {
                 script {
                     try {
-                        // Print docker-compose version and config
-                        bat '''
-                            echo "Docker Compose Version:"
-                            docker-compose version
-                            echo "Docker Compose Config:"
-                            docker-compose config
-                        '''
-
-                        // Stop any running containers
                         bat 'docker-compose down -v'
-                        
-                        // Build with debug output
-                        bat 'docker-compose build --no-cache --progress=plain'
+                        bat 'docker-compose build --no-cache'
                         bat 'docker-compose up -d'
                         
-                        // Show running containers
                         bat '''
                             echo "Running Containers:"
                             docker ps
+                            
+                            echo "Container Logs:"
+                            docker-compose logs
                         '''
                         
                         bat 'timeout /t 30 /nobreak'
