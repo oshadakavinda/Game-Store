@@ -2,129 +2,68 @@ pipeline {
     agent any
 
     options {
-        timeout(time: 1, unit: 'HOURS')
-        retry(3)
+        timeout(time: 1, unit: 'HOURS') // Set a timeout for the pipeline
+        retry(3) // Retry the pipeline up to 3 times on failure
     }
 
     environment {
-        DOTNET_CLI_HOME = '/home/jenkins/workspace/temp'
-        ASPNETCORE_ENVIRONMENT = 'Production'
-        COMPOSE_PROJECT_NAME = "gamestore-${BUILD_NUMBER}"
-        DOCKER_BUILDKIT = '1'
-        HOME = '/home/jenkins'  // Set HOME explicitly
+        COMPOSE_PROJECT_NAME = "gamestore-${BUILD_NUMBER}" // Unique project name for Docker Compose
+        DOCKER_BUILDKIT = '1' // Enable Docker BuildKit for faster builds
     }
 
     stages {
         stage('Clean Workspace') {
             steps {
-                cleanWs()
+                cleanWs() // Clean the workspace before starting
             }
         }
 
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
-                script {
-                    // Configure Git for better stability
-                    sh '''
-                        git config --global core.longpaths true
-                        git config --global http.postBuffer 524288000
-                        git config --global core.compression 9
-                    '''
-                    
-                    // Perform checkout with retry
-                    retry(3) {
-                        checkout scm
-                    }
-                }
+                checkout scm // Checkout the source code from SCM (e.g., Git)
             }
         }
 
-        stage('Prepare Environment') {
+        stage('Build Docker Images') {
             steps {
-                script {
-                    // Verify Docker is running and accessible
-                    sh '''
-                        # Verify Docker daemon is running
-                        sudo systemctl status docker || (sudo systemctl start docker && sleep 10)
-                        
-                        # Verify Docker permissions
-                        sudo chmod 666 /var/run/docker.sock
-                        
-                        # Test Docker access
-                        docker info
-                    '''
-                }
+                sh 'docker-compose build --no-cache' // Build Docker images without cache
             }
         }
 
-        stage('Docker Compose Build') {
+        stage('Start Containers') {
             steps {
-                script {
-                    // Build with retry and no cache
-                    retry(2) {
-                        sh '''
-                            # Ensure docker-compose is available
-                            docker-compose version
-                            
-                            # Build the images
-                            docker-compose build --no-cache
-                        '''
-                    }
-                }
+                sh '''
+                    docker-compose down -v || true // Stop and remove any existing containers
+                    docker-compose up -d // Start containers in detached mode
+                    sleep 30 // Wait for services to initialize
+                '''
             }
         }
 
-        stage('Docker Compose Up') {
+        stage('Verify Services') {
             steps {
-                script {
-                    // Start containers
-                    sh '''
-                        # Stop any existing containers
-                        docker-compose down -v || true
-                        
-                        # Start new containers
-                        docker-compose up -d
-                        
-                        # Wait for services to be healthy
-                        sleep 45
-                        
-                        # Check if containers are running
-                        docker-compose ps --filter status=running | grep "gamestore" || exit 1
-                        
-                        # Check API availability
-                        curl -f http://localhost:5274/status || exit 1
-                        
-                        # Check Frontend availability
-                        curl -f http://localhost:5002 || exit 1
-                    '''
-                }
+                sh '''
+                    docker-compose ps --filter status=running | grep "gamestore" || exit 1 // Check if containers are running
+                    curl -f http://localhost:5274/status || exit 1 // Verify API is running
+                    curl -f http://localhost:5002 || exit 1 // Verify Frontend is running
+                '''
             }
         }
     }
 
     post {
         always {
-            script {
-                // Stop and remove containers, networks, and volumes
-                sh '''
-                    docker-compose down -v || true
-                    docker image prune -f || true
-                    docker volume prune -f || true
-                    docker system prune -f || true
-                '''
-                
-                // Clean workspace
-                cleanWs()
-            }
+            sh '''
+                docker-compose down -v || true // Stop and remove containers
+                docker system prune -f // Clean up Docker resources
+            '''
+            cleanWs() // Clean the workspace after the pipeline
         }
         success {
             echo 'Pipeline completed successfully!'
         }
         failure {
             echo 'Pipeline failed! Check logs for details.'
-        }
-        unstable {
-            echo 'Pipeline is unstable. Check test results and logs.'
         }
     }
 }
