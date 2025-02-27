@@ -8,24 +8,22 @@ pipeline {
             }
         }
 
-        stage('Rename Frontend Dockerfile') {
-            steps {
-                script {
-                    // Rename DockerFile to Dockerfile for consistency
-                    bat 'if exist GameStore.Frontend\\DockerFile rename GameStore.Frontend\\DockerFile Dockerfile'
-                }
-            }
-        }
-
         stage('Build and Start Services') {
             steps {
                 script {
                     try {
+                        // Stop any running containers first
+                        bat 'docker-compose down -v'
+                        
                         // Build and start all services using docker-compose
-                        bat 'docker-compose build'
+                        bat 'docker-compose build --no-cache'
                         bat 'docker-compose up -d'
+                        
+                        // Give services some time to start
+                        bat 'timeout /t 30 /nobreak'
                     } catch (Exception e) {
                         echo "Error during build and start: ${e.message}"
+                        bat 'docker-compose logs'  // Print logs for debugging
                         currentBuild.result = 'FAILURE'
                         error("Build and start services failed")
                     }
@@ -36,20 +34,22 @@ pipeline {
         stage('Health Check') {
             steps {
                 script {
-                    // Wait for services to be healthy using PowerShell
                     bat '''
                         @echo off
+                        echo "Starting health checks..."
                         
                         REM Wait for backend
                         set timeout=300
                         :WAIT_BACKEND
+                        echo "Checking backend health..."
                         powershell -Command "try { $response = Invoke-WebRequest -Uri 'http://localhost:5274' -UseBasicParsing; exit 0 } catch { exit 1 }"
                         if %ERRORLEVEL% NEQ 0 (
                             set /a timeout-=5
                             if %timeout% LEQ 0 (
-                                echo Backend service failed to start
+                                echo "Backend service failed to start"
                                 exit 1
                             )
+                            echo "Backend not ready, waiting 5 seconds..."
                             timeout /t 5 /nobreak
                             goto WAIT_BACKEND
                         )
@@ -57,16 +57,20 @@ pipeline {
                         REM Wait for frontend
                         set timeout=300
                         :WAIT_FRONTEND
+                        echo "Checking frontend health..."
                         powershell -Command "try { $response = Invoke-WebRequest -Uri 'http://localhost:5002' -UseBasicParsing; exit 0 } catch { exit 1 }"
                         if %ERRORLEVEL% NEQ 0 (
                             set /a timeout-=5
                             if %timeout% LEQ 0 (
-                                echo Frontend service failed to start
+                                echo "Frontend service failed to start"
                                 exit 1
                             )
+                            echo "Frontend not ready, waiting 5 seconds..."
                             timeout /t 5 /nobreak
                             goto WAIT_FRONTEND
                         )
+                        
+                        echo "All services are healthy!"
                     '''
                 }
             }
@@ -77,9 +81,11 @@ pipeline {
         always {
             script {
                 try {
+                    // Print logs before cleanup
+                    bat 'docker-compose logs'
+                    
                     // Clean up containers and volumes
                     bat 'docker-compose down -v'
-                    // Remove -y flag as it's not supported
                     bat 'docker system prune -f'
                 } catch (Exception e) {
                     echo "Warning during cleanup: ${e.message}"
