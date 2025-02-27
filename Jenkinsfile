@@ -3,12 +3,11 @@ pipeline {
 
     options {
         timeout(time: 1, unit: 'HOURS') // Set a timeout for the pipeline
-        retry(3) // Retry the pipeline up to 3 times on failure
     }
 
     environment {
-        COMPOSE_PROJECT_NAME = "gamestore-${BUILD_NUMBER}" // Unique project name for Docker Compose
-        DOCKER_BUILDKIT = '1' // Enable Docker BuildKit for faster builds
+        REPO_URL = "https://github.com/your-username/your-repo.git" // Replace with your repository URL
+        CLONE_DIR = "your-repo" // Replace with your desired clone directory
     }
 
     stages {
@@ -18,47 +17,40 @@ pipeline {
             }
         }
 
-        stage('Checkout Code') {
+        stage('Clone Repository') {
             steps {
-                checkout scm // Checkout the source code from SCM (e.g., Git)
+                script {
+                    // Check if the clone directory already exists
+                    if (fileExists("${env.CLONE_DIR}")) {
+                        echo "Directory ${env.CLONE_DIR} already exists. Deleting it..."
+                        sh "rm -rf ${env.CLONE_DIR}"
+                    }
+
+                    // Clone the repository
+                    echo "Cloning repository from ${env.REPO_URL} into ${env.CLONE_DIR}..."
+                    sh "git clone ${env.REPO_URL} ${env.CLONE_DIR}"
+
+                    // Check if the clone was successful
+                    if (fileExists("${env.CLONE_DIR}")) {
+                        echo "Repository cloned successfully!"
+                    } else {
+                        error "Failed to clone repository. Check the URL and try again."
+                    }
+                }
             }
         }
 
-        stage('Build Docker Images') {
+        stage('List Files') {
             steps {
-                sh 'docker-compose build --no-cache' // Build Docker images without cache
-            }
-        }
-
-        stage('Start Containers') {
-            steps {
-                sh '''
-                    docker-compose down -v || true // Stop and remove any existing containers
-                    docker-compose up -d // Start containers in detached mode
-                    sleep 30 // Wait for services to initialize
-                '''
-            }
-        }
-
-        stage('Verify Services') {
-            steps {
-                sh '''
-                    docker-compose ps --filter status=running | grep "gamestore" || exit 1 // Check if containers are running
-                    curl -f http://localhost:5274/status || exit 1 // Verify API is running
-                    curl -f http://localhost:5002 || exit 1 // Verify Frontend is running
-                '''
+                script {
+                    // List files in the cloned repository
+                    sh "ls -la ${env.CLONE_DIR}"
+                }
             }
         }
     }
 
     post {
-        always {
-            sh '''
-                docker-compose down -v || true // Stop and remove containers
-                docker system prune -f // Clean up Docker resources
-            '''
-            cleanWs() // Clean the workspace after the pipeline
-        }
         success {
             echo 'Pipeline completed successfully!'
         }
