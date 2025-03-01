@@ -41,7 +41,10 @@ pipeline {
             steps {
                 script {
                     try {
-                        bat 'docker-compose down -v'
+                        // Only stop containers if they're already running
+                        bat 'docker-compose down'
+                        
+                        // Build and start services
                         bat 'docker-compose build --no-cache'
                         bat 'docker-compose up -d'
                         
@@ -68,8 +71,10 @@ pipeline {
         always {
             script {
                 try {
+                    // Only show logs, don't stop containers
                     bat 'docker-compose logs'
-                    bat 'docker-compose down -v'
+                    
+                    // Clean workspace but keep containers running
                     cleanWs()
                 } catch (Exception e) {
                     echo "Warning during cleanup: ${e.message}"
@@ -77,7 +82,9 @@ pipeline {
             }
         }
         success {
-            echo 'Pipeline completed successfully!'
+            echo 'Pipeline completed successfully! Application is running at:'
+            echo 'Frontend: http://localhost:5002'
+            echo 'Backend: http://localhost:5274'
         }
         failure {
             echo 'Pipeline failed!'
