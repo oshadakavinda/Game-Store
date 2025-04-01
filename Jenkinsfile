@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    environment {
+        DOCKER_HUB_CREDENTIALS = credentials('docker-hub')  // Use Jenkins stored credentials
+    }
+
     options {
         buildDiscarder(logRotator(numToKeepStr: '5'))
         skipDefaultCheckout(true)
@@ -15,11 +19,7 @@ pipeline {
                         $class: 'GitSCM',
                         branches: [[name: '*/master']],
                         extensions: [
-                            [$class: 'CloneOption',
-                             depth: 1,
-                             noTags: true,
-                             shallow: true,
-                             timeout: 10],
+                            [$class: 'CloneOption', depth: 1, noTags: true, shallow: true, timeout: 10],
                             [$class: 'CleanBeforeCheckout'],
                             [$class: 'SparseCheckoutPaths', 
                              sparseCheckoutPaths: [
@@ -29,9 +29,7 @@ pipeline {
                                 [$class: 'SparseCheckoutPath', path: '.gitignore']
                              ]]
                         ],
-                        userRemoteConfigs: [[
-                            url: 'https://github.com/oshadakavinda/Game-Store.git'
-                        ]]
+                        userRemoteConfigs: [[url: 'https://github.com/oshadakavinda/Game-Store.git']]
                     ])
                 }
             }
@@ -41,26 +39,49 @@ pipeline {
             steps {
                 script {
                     try {
-                        // Only stop containers if they're already running
-                        bat 'docker-compose down'
-                        
+                        // Stop running containers if any
+                        sh 'docker-compose down'
+
+                        // Log in to Docker Hub
+                        sh 'echo $DOCKER_HUB_CREDENTIALS_PSW | docker login -u $DOCKER_HUB_CREDENTIALS_USR --password-stdin'
+
                         // Build and start services
-                        bat 'docker-compose build --no-cache'
-                        bat 'docker-compose up -d'
-                        
+                        sh 'docker-compose build --no-cache'
+                        sh 'docker-compose up -d'
+
                         // Show running containers and logs
-                        bat '''
+                        sh '''
                             echo "Running Containers:"
                             docker ps
-                            
+
                             echo "Container Logs:"
                             docker-compose logs
                         '''
                     } catch (Exception e) {
                         echo "Error during build and start: ${e.message}"
-                        bat 'docker-compose logs'
+                        sh 'docker-compose logs'
                         currentBuild.result = 'FAILURE'
                         error("Build and start services failed")
+                    }
+                }
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                script {
+                    try {
+                        // Tag and push backend image
+                        sh 'docker tag game-store-backend oshadakavinda2/game-store-backend:latest'
+                        sh 'docker push oshadakavinda2/game-store-backend:latest'
+
+                        // Tag and push frontend image
+                        sh 'docker tag game-store-frontend oshadakavinda2/game-store-frontend:latest'
+                        sh 'docker push oshadakavinda2/game-store-frontend:latest'
+                    } catch (Exception e) {
+                        echo "Error during Docker Hub push: ${e.message}"
+                        currentBuild.result = 'FAILURE'
+                        error("Failed to push images to Docker Hub")
                     }
                 }
             }
@@ -71,10 +92,7 @@ pipeline {
         always {
             script {
                 try {
-                    // Only show logs, don't stop containers
-                    bat 'docker-compose logs'
-                    
-                    // Clean workspace but keep containers running
+                    sh 'docker-compose logs'
                     cleanWs()
                 } catch (Exception e) {
                     echo "Warning during cleanup: ${e.message}"
@@ -82,9 +100,7 @@ pipeline {
             }
         }
         success {
-            echo 'Pipeline completed successfully! Application is running at:'
-            echo 'Frontend: http://localhost:5002'
-            echo 'Backend: http://localhost:5274'
+            echo 'Pipeline completed successfully! Application is running on AWS.'
         }
         failure {
             echo 'Pipeline failed!'
