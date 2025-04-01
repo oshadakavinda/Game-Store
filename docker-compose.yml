@@ -9,7 +9,7 @@ services:
       - ASPNETCORE_URLS=http://0.0.0.0:5274
     volumes:
       - sqlite_data:/app/Data
-    restart: always
+    restart: always  # This ensures automatic restart
 
   frontend:
     image: oshadakavinda2/game-store-frontend:latest
@@ -17,7 +17,7 @@ services:
       - "5002:8080"
     depends_on:
       - backend
-    restart: always
+    restart: always  # This ensures automatic restart
 
 volumes:
   sqlite_data:

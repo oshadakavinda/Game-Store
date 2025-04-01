@@ -10,22 +10,21 @@ pipeline {
             steps {
                 script {
                     try {
-                        // Stop and remove existing containers
-                        sh 'docker-compose down -v || true'
-                        
                         // Pull latest images
-                        sh 'docker pull oshadakavinda2/game-store-backend:latest'
-                        sh 'docker pull oshadakavinda2/game-store-frontend:latest'
+                        bat 'docker pull oshadakavinda2/game-store-backend:latest'
+                        bat 'docker pull oshadakavinda2/game-store-frontend:latest'
+                        
+                        // Stop any existing containers but keep volumes
+                        bat 'docker-compose down || echo "No existing containers"'
                         
                         // Start services
-                        sh 'docker-compose up -d'
+                        bat 'docker-compose up -d'
                         
                         // Show running containers
-                        sh 'docker ps'
-                        sh 'docker-compose logs'
+                        bat 'docker ps'
                     } catch (Exception e) {
                         echo "Error during deployment: ${e.message}"
-                        sh 'docker-compose logs'
+                        bat 'docker-compose logs'
                         currentBuild.result = 'FAILURE'
                         error("Deployment failed")
                     }
@@ -37,7 +36,7 @@ pipeline {
     post {
         always {
             script {
-                // Keep the containers running, only cleanup workspace
+                // Only cleanup workspace, DO NOT bring down containers
                 cleanWs()
             }
         }
