@@ -24,7 +24,7 @@ pipeline {
                         ],
                         [$class: 'RelativeTargetDirectory', relativeTargetDir: 'gamestore']
                     ],
-                    userRemoteConfigs: [[url: 'https://github.com/oshadakavinda/Game-Store.git']]
+                    userRemoteConfigs: [[url: 'https://github.com/oshadakavinda2/Game-Store.git']]
                 ])
             }
         }
