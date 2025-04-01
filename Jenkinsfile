@@ -1,80 +1,67 @@
 pipeline {
     agent any
 
-    environment {
-        BACKEND_IMAGE = 'oshadakavinda2/game-store-backend:latest'
-        FRONTEND_IMAGE = 'oshadakavinda2/game-store-frontend:latest'
-    }
-
     options {
         buildDiscarder(logRotator(numToKeepStr: '5'))
-        timeout(time: 30, unit: 'MINUTES')
+        skipDefaultCheckout(true)
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: '*/master']],
-                    extensions: [
-                        [$class: 'SparseCheckoutPaths', 
-                         sparseCheckoutPaths: [[path: 'docker-compose.yml']]
-                        ],
-                        [$class: 'RelativeTargetDirectory', relativeTargetDir: 'gamestore']
-                    ],
-                    userRemoteConfigs: [[url: 'https://github.com/oshadakavinda/Game-Store.git']]
-                ])
-            }
-        }
-
-        stage('Docker Login') {
+        stage('Optimized Checkout') {
             steps {
                 script {
-                    withCredentials([usernamePassword(
-                        credentialsId: 'docker-hub', // Make sure this exists in Jenkins
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASS'
-                    )]) {
-                        bat """
-                            echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin
-                        """
+                    cleanWs()
+                    checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: '*/master']],
+                        extensions: [
+                            [$class: 'CloneOption',
+                             depth: 1,
+                             noTags: true,
+                             shallow: true,
+                             timeout: 10],
+                            [$class: 'CleanBeforeCheckout'],
+                            [$class: 'SparseCheckoutPaths', 
+                             sparseCheckoutPaths: [
+                                [$class: 'SparseCheckoutPath', path: 'GameStore.Api/'],
+                                [$class: 'SparseCheckoutPath', path: 'GameStore.Frontend/'],
+                                [$class: 'SparseCheckoutPath', path: 'docker-compose.yml'],
+                                [$class: 'SparseCheckoutPath', path: '.gitignore']
+                             ]]
+                        ],
+                        userRemoteConfigs: [[
+                            url: 'https://github.com/oshadakavinda/Game-Store.git'
+                        ]]
+                    ])
+                }
+            }
+        }
+
+        stage('Build and Start Services') {
+            steps {
+                script {
+                    try {
+                        bat 'docker-compose down -v'
+
+
+
+                        bat 'docker-compose build --no-cache'
+                        bat 'docker-compose up -d'
+
+                        // Show running containers and logs
+                        bat '''
+                            echo "Running Containers:"
+                            docker ps
+                            
+                            echo "Container Logs:"
+                            docker-compose logs
+                        '''
+                    } catch (Exception e) {
+                        echo "Error during build and start: ${e.message}"
+                        bat 'docker-compose logs'
+                        currentBuild.result = 'FAILURE'
+                        error("Build and start services failed")
                     }
-                }
-            }
-        }
-
-        stage('Pull Images') {
-            steps {
-                dir('gamestore') {
-                    bat """
-                        docker pull %BACKEND_IMAGE%
-                        docker pull %FRONTEND_IMAGE%
-                    """
-                }
-            }
-        }
-
-        stage('Deploy') {
-            steps {
-                dir('gamestore') {
-                    bat """
-                        docker-compose down --remove-orphans || exit 0
-                        docker-compose up -d
-                        timeout /t 15 /nobreak > NUL
-                        docker-compose ps
-                    """
-                }
-            }
-        }
-
-        stage('Verify') {
-            steps {
-                dir('gamestore') {
-                    bat """
-                        curl -I http://localhost:5274/api/games || echo Backend check failed
-                        curl -I http://localhost:5002 || echo Frontend check failed
-                    """
                 }
             }
         }
@@ -83,22 +70,24 @@ pipeline {
     post {
         always {
             script {
-                dir('gamestore') {
-                    bat """
-                        docker-compose logs --tail=50
-                        docker logout
-                    """
+                try {
+
+                    bat 'docker-compose logs'
+                    bat 'docker-compose down -v'
+
+                    cleanWs()
+                } catch (Exception e) {
+                    echo "Warning during cleanup: ${e.message}"
                 }
-                cleanWs()
             }
         }
         success {
-            echo '🚀 Deployment Successful!'
-            echo 'Frontend: http://localhost:5002'
-            echo 'Backend: http://localhost:5274'
+            echo 'Pipeline completed successfully!'
+
+
         }
         failure {
-            echo '❌ Deployment Failed - Check logs above'
+            echo 'Pipeline failed!'
         }
     }
 }
