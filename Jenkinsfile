@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_HUB_CREDENTIALS = credentials('docker-hub-creds')  // Jenkins stored credentials
+        DOCKER_HUB_CREDENTIALS = credentials('docker-hub')  // Jenkins stored credentials
         AWS_EC2_IP = credentials('aws-ec2-ip')
         BACKEND_IMAGE = 'oshadakavinda2/game-store-backend:latest'
         FRONTEND_IMAGE = 'oshadakavinda2/game-store-frontend:latest'
