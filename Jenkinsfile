@@ -2,87 +2,92 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_HUB_CREDENTIALS = credentials('docker-hub')  // Use Jenkins stored credentials
+        DOCKER_HUB_CREDENTIALS = credentials('docker-hub-creds')  // Jenkins stored credentials
+        AWS_EC2_IP = credentials('aws-ec2-ip')
+        BACKEND_IMAGE = 'oshadakavinda2/game-store-backend:latest'
+        FRONTEND_IMAGE = 'oshadakavinda2/game-store-frontend:latest'
     }
 
     options {
         buildDiscarder(logRotator(numToKeepStr: '5'))
-        skipDefaultCheckout(true)
+        timeout(time: 30, unit: 'MINUTES')
     }
 
     stages {
-        stage('Optimized Checkout') {
+        stage('Prepare Environment') {
             steps {
-                script {
-                    cleanWs()
-                    checkout([
-                        $class: 'GitSCM',
-                        branches: [[name: '*/master']],
-                        extensions: [
-                            [$class: 'CloneOption', depth: 1, noTags: true, shallow: true, timeout: 10],
-                            [$class: 'CleanBeforeCheckout'],
-                            [$class: 'SparseCheckoutPaths', 
-                             sparseCheckoutPaths: [
-                                [$class: 'SparseCheckoutPath', path: 'GameStore.Api/'],
-                                [$class: 'SparseCheckoutPath', path: 'GameStore.Frontend/'],
-                                [$class: 'SparseCheckoutPath', path: 'docker-compose.yml'],
-                                [$class: 'SparseCheckoutPath', path: '.gitignore']
-                             ]]
+                cleanWs()
+                // Minimal checkout just for docker-compose.yml
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: '*/master']],
+                    extensions: [
+                        [$class: 'SparseCheckoutPaths', 
+                         sparseCheckoutPaths: [[path: 'docker-compose.yml']]
                         ],
-                        userRemoteConfigs: [[url: 'https://github.com/oshadakavinda/Game-Store.git']]
-                    ])
+                        [$class: 'CloneOption', depth: 1, noTags: true, shallow: true]
+                    ],
+                    userRemoteConfigs: [[url: 'https://github.com/oshadakavinda/Game-Store.git']]
+                ])
+            }
+        }
+
+        stage('Docker Hub Login') {
+            steps {
+                script {
+                    sh """
+                        echo \$DOCKER_HUB_CREDENTIALS_PSW | docker login \
+                            -u \$DOCKER_HUB_CREDENTIALS_USR \
+                            --password-stdin
+                    """
                 }
             }
         }
 
-        stage('Build and Start Services') {
+        stage('Pull Images') {
             steps {
                 script {
                     try {
-                        // Stop running containers if any
-                        sh 'docker-compose down'
-
-                        // Log in to Docker Hub
-                        sh 'echo $DOCKER_HUB_CREDENTIALS_PSW | docker login -u $DOCKER_HUB_CREDENTIALS_USR --password-stdin'
-
-                        // Build and start services
-                        sh 'docker-compose build --no-cache'
-                        sh 'docker-compose up -d'
-
-                        // Show running containers and logs
-                        sh '''
-                            echo "Running Containers:"
-                            docker ps
-
-                            echo "Container Logs:"
-                            docker-compose logs
-                        '''
+                        sh """
+                            docker pull ${BACKEND_IMAGE}
+                            docker pull ${FRONTEND_IMAGE}
+                        """
                     } catch (Exception e) {
-                        echo "Error during build and start: ${e.message}"
-                        sh 'docker-compose logs'
-                        currentBuild.result = 'FAILURE'
-                        error("Build and start services failed")
+                        error "Failed to pull Docker images: ${e.message}"
                     }
                 }
             }
         }
 
-        stage('Push to Docker Hub') {
+        stage('Deploy') {
             steps {
                 script {
-                    try {
-                        // Tag and push backend image
-                        sh 'docker tag game-store-backend oshadakavinda2/game-store-backend:latest'
-                        sh 'docker push oshadakavinda2/game-store-backend:latest'
+                    sh """
+                        # Stop and remove old containers
+                        docker-compose down --remove-orphans || true
+                        
+                        # Start services using pulled images
+                        docker-compose up -d
+                        
+                        # Verify deployment
+                        echo "Waiting for services to initialize..."
+                        sleep 15
+                        docker-compose ps
+                    """
+                }
+            }
+        }
 
-                        // Tag and push frontend image
-                        sh 'docker tag game-store-frontend oshadakavinda2/game-store-frontend:latest'
-                        sh 'docker push oshadakavinda2/game-store-frontend:latest'
-                    } catch (Exception e) {
-                        echo "Error during Docker Hub push: ${e.message}"
-                        currentBuild.result = 'FAILURE'
-                        error("Failed to push images to Docker Hub")
-                    }
+        stage('Health Check') {
+            steps {
+                script {
+                    sh """
+                        echo "Testing Backend:"
+                        curl -I http://localhost:5274/api/games || true
+                        
+                        echo "Testing Frontend:"
+                        curl -I http://localhost:5002 || true
+                    """
                 }
             }
         }
@@ -91,19 +96,20 @@ pipeline {
     post {
         always {
             script {
-                try {
-                    sh 'docker-compose logs'
-                    cleanWs()
-                } catch (Exception e) {
-                    echo "Warning during cleanup: ${e.message}"
-                }
+                sh 'docker-compose logs --tail=100'
+                cleanWs()
+                sh 'docker logout'  // Clean Docker Hub session
             }
         }
         success {
-            echo 'Pipeline completed successfully! Application is running on AWS.'
+            echo """
+            🚀 Deployment Successful!
+            Frontend: http://${AWS_EC2_IP_PSW}:5002
+            Backend: http://${AWS_EC2_IP_PSW}:5274
+            """
         }
         failure {
-            echo 'Pipeline failed!'
+            echo ' Deployment Failed - Check logs above'
         }
     }
 }
