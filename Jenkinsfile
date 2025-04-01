@@ -2,7 +2,6 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_HUB_CREDENTIALS = credentials('docker-hub-creds') // Verify this credential exists in Jenkins
         BACKEND_IMAGE = 'oshadakavinda2/game-store-backend:latest'
         FRONTEND_IMAGE = 'oshadakavinda2/game-store-frontend:latest'
     }
@@ -24,7 +23,7 @@ pipeline {
                         ],
                         [$class: 'RelativeTargetDirectory', relativeTargetDir: 'gamestore']
                     ],
-                    userRemoteConfigs: [[url: 'https://github.com/oshadakavinda2/Game-Store.git']]
+                    userRemoteConfigs: [[url: 'https://github.com/oshadakavinda/Game-Store.git']]
                 ])
             }
         }
@@ -33,7 +32,7 @@ pipeline {
             steps {
                 script {
                     withCredentials([usernamePassword(
-                        credentialsId: 'docker-hub-creds',
+                        credentialsId: 'docker-hub-credentials', // Make sure this exists in Jenkins
                         usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_PASS'
                     )]) {
@@ -83,11 +82,13 @@ pipeline {
 
     post {
         always {
-            dir('gamestore') {
-                bat """
-                    docker-compose logs --tail=50
-                    docker logout
-                """
+            script {
+                dir('gamestore') {
+                    bat """
+                        docker-compose logs --tail=50
+                        docker logout
+                    """
+                }
                 cleanWs()
             }
         }
@@ -97,7 +98,7 @@ pipeline {
             echo 'Backend: http://localhost:5274'
         }
         failure {
-            echo ' Deployment Failed - Check logs above'
+            echo '❌ Deployment Failed - Check logs above'
         }
     }
 }
