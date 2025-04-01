@@ -97,7 +97,7 @@ pipeline {
             echo 'Backend: http://localhost:5274'
         }
         failure {
-            echo '❌ Deployment Failed - Check logs above'
+            echo ' Deployment Failed - Check logs above'
         }
     }
 }
