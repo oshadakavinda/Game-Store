@@ -1,8 +1,6 @@
 services:
   backend:
-    build: 
-      context: ./GameStore.Api
-      dockerfile: Dockerfile
+    image: oshadakavinda2/game-store-backend:latest
     ports:
       - "5274:5274"
     environment:
@@ -12,9 +10,7 @@ services:
     restart: always
 
   frontend:
-    build:
-      context: ./GameStore.Frontend
-      dockerfile: Dockerfile
+    image: oshadakavinda2/game-store-frontend:latest
     ports:
       - "5002:8080"
     depends_on:

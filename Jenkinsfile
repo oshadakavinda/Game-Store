@@ -2,8 +2,8 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_HUB_CREDENTIALS = credentials('docker-hub')  // Jenkins stored credentials
-        AWS_EC2_IP = credentials('aws-ec2-ip')
+        DOCKER_HUB_USER = credentials('docker-hub-user')  // Jenkins username/password credential
+        DOCKER_HUB_PASS = credentials('docker-hub-pass')  // Separate credential for password if needed
         BACKEND_IMAGE = 'oshadakavinda2/game-store-backend:latest'
         FRONTEND_IMAGE = 'oshadakavinda2/game-store-frontend:latest'
     }
@@ -14,31 +14,31 @@ pipeline {
     }
 
     stages {
-        stage('Prepare Environment') {
+        stage('Checkout') {
             steps {
-                cleanWs()
-                // Minimal checkout just for docker-compose.yml
                 checkout([
                     $class: 'GitSCM',
                     branches: [[name: '*/master']],
                     extensions: [
-                        [$class: 'SparseCheckoutPaths', 
-                         sparseCheckoutPaths: [[path: 'docker-compose.yml']]
-                        ],
-                        [$class: 'CloneOption', depth: 1, noTags: true, shallow: true]
+                        [$class: 'RelativeTargetDirectory', relativeTargetDir: 'gamestore']
                     ],
                     userRemoteConfigs: [[url: 'https://github.com/oshadakavinda/Game-Store.git']]
                 ])
+                dir('gamestore') {
+                    bat 'dir'  // Verify contents
+                }
             }
         }
 
-        stage('Docker Hub Login') {
+        stage('Docker Login') {
             steps {
-                script {
-                    sh """
-                        echo \$DOCKER_HUB_CREDENTIALS_PSW | docker login \
-                            -u \$DOCKER_HUB_CREDENTIALS_USR \
-                            --password-stdin
+                withCredentials([usernamePassword(
+                    credentialsId: 'docker-hub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    bat """
+                        echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin
                     """
                 }
             }
@@ -46,47 +46,34 @@ pipeline {
 
         stage('Pull Images') {
             steps {
-                script {
-                    try {
-                        sh """
-                            docker pull ${BACKEND_IMAGE}
-                            docker pull ${FRONTEND_IMAGE}
-                        """
-                    } catch (Exception e) {
-                        error "Failed to pull Docker images: ${e.message}"
-                    }
+                dir('gamestore') {
+                    bat """
+                        docker pull %BACKEND_IMAGE%
+                        docker pull %FRONTEND_IMAGE%
+                    """
                 }
             }
         }
 
         stage('Deploy') {
             steps {
-                script {
-                    sh """
-                        # Stop and remove old containers
-                        docker-compose down --remove-orphans || true
-                        
-                        # Start services using pulled images
+                dir('gamestore') {
+                    bat """
+                        docker-compose down --remove-orphans
                         docker-compose up -d
-                        
-                        # Verify deployment
-                        echo "Waiting for services to initialize..."
-                        sleep 15
+                        timeout /t 15 /nobreak > NUL
                         docker-compose ps
                     """
                 }
             }
         }
 
-        stage('Health Check') {
+        stage('Verify') {
             steps {
-                script {
-                    sh """
-                        echo "Testing Backend:"
-                        curl -I http://localhost:5274/api/games || true
-                        
-                        echo "Testing Frontend:"
-                        curl -I http://localhost:5002 || true
+                dir('gamestore') {
+                    bat """
+                        curl -I http://localhost:5274/api/games || echo Backend check failed
+                        curl -I http://localhost:5002 || echo Frontend check failed
                     """
                 }
             }
@@ -95,21 +82,21 @@ pipeline {
 
     post {
         always {
-            script {
-                sh 'docker-compose logs --tail=100'
+            dir('gamestore') {
+                bat """
+                    docker-compose logs --tail=50
+                    docker logout
+                """
                 cleanWs()
-                sh 'docker logout'  // Clean Docker Hub session
             }
         }
         success {
-            echo """
-            🚀 Deployment Successful!
-            Frontend: http://${AWS_EC2_IP_PSW}:5002
-            Backend: http://${AWS_EC2_IP_PSW}:5274
-            """
+            echo 'Deployment successful!'
+            echo 'Frontend: http://localhost:5002'
+            echo 'Backend: http://localhost:5274'
         }
         failure {
-            echo ' Deployment Failed - Check logs above'
+            echo 'Deployment failed - check logs above'
         }
     }
 }
