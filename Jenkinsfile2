@@ -1,6 +1,13 @@
 pipeline {
     agent any
 
+    environment {
+        DOCKERHUB_CREDENTIALS = 'docker-hub'  // Jenkins credentials ID
+        DOCKERHUB_USERNAME = 'oshadakavinda2' // Change this to your Docker Hub username
+        FRONTEND_IMAGE = 'oshadakavinda2/game-store-frontend'
+        API_IMAGE = 'oshadakavinda2/game-store-api'
+    }
+
     options {
         buildDiscarder(logRotator(numToKeepStr: '5'))
         skipDefaultCheckout(true)
@@ -22,8 +29,7 @@ pipeline {
                                 [$class: 'SparseCheckoutPath', path: 'GameStore.Api/'],
                                 [$class: 'SparseCheckoutPath', path: 'GameStore.Frontend/'],
                                 [$class: 'SparseCheckoutPath', path: 'docker-compose.yml'],
-                                [$class: 'SparseCheckoutPath', path: '.gitignore'],
-                                [$class: 'SparseCheckoutPath', path: 'terraform/']  // Ensure Terraform directory is checked out
+                                [$class: 'SparseCheckoutPath', path: '.gitignore']
                              ]]
                         ],
                         userRemoteConfigs: [[
@@ -34,46 +40,35 @@ pipeline {
             }
         }
 
-        stage('Terraform Deployment') {
+        stage('Build Docker Images') {
             steps {
                 script {
-                    dir('terraform') {  // Navigate to Terraform directory
-                        try {
-                            sh 'terraform init'
-                            sh 'terraform validate'
-                            sh 'terraform plan -out=tfplan'
-                            sh 'terraform apply -auto-approve'
-                        } catch (Exception e) {
-                            echo "Terraform deployment failed: ${e.message}"
-                            currentBuild.result = 'FAILURE'
-                            error("Terraform deployment failed")
-                        }
+                    try {
+                        // Build Frontend and API images
+                        bat "docker build -t ${FRONTEND_IMAGE}:latest GameStore.Frontend/"
+                        bat "docker build -t ${API_IMAGE}:latest GameStore.Api/"
+                    } catch (Exception e) {
+                        echo "Error during Docker build: ${e.message}"
+                        currentBuild.result = 'FAILURE'
+                        error("Docker build failed")
                     }
                 }
             }
         }
 
-        stage('Build and Start Services') {
+        stage('Push Images to Docker Hub') {
             steps {
                 script {
-                    try {
-                        bat 'docker-compose down -v'
-                        bat 'docker-compose build --no-cache'
-                        bat 'docker-compose up -d'
-
-                        // Show running containers and logs
-                        bat '''
-                            echo "Running Containers:"
-                            docker ps
-                            
-                            echo "Container Logs:"
-                            docker-compose logs
-                        '''
-                    } catch (Exception e) {
-                        echo "Error during build and start: ${e.message}"
-                        bat 'docker-compose logs'
-                        currentBuild.result = 'FAILURE'
-                        error("Build and start services failed")
+                    withCredentials([usernamePassword(credentialsId: DOCKERHUB_CREDENTIALS, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        try {
+                            bat "docker login -u ${DOCKER_USER} -p ${DOCKER_PASS}"
+                            bat "docker push ${FRONTEND_IMAGE}:latest"
+                            bat "docker push ${API_IMAGE}:latest"
+                        } catch (Exception e) {
+                            echo "Error during Docker push: ${e.message}"
+                            currentBuild.result = 'FAILURE'
+                            error("Docker push failed")
+                        }
                     }
                 }
             }
@@ -83,20 +78,14 @@ pipeline {
     post {
         always {
             script {
-                try {
-                    bat 'docker-compose logs'
-                    bat 'docker-compose down -v'
-                    cleanWs()
-                } catch (Exception e) {
-                    echo "Warning during cleanup: ${e.message}"
-                }
+                cleanWs()
             }
         }
         success {
-            echo 'Pipeline completed successfully!'
+            echo '✅ Docker images successfully pushed to Docker Hub!'
         }
         failure {
-            echo 'Pipeline failed!'
+            echo '❌ Pipeline failed!'
         }
     }
 }
