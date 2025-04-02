@@ -5,22 +5,39 @@ pipeline {
         buildDiscarder(logRotator(numToKeepStr: '5'))
     }
 
+    environment {
+        BACKEND_IMAGE = 'oshadakavinda2/game-store-backend'
+        FRONTEND_IMAGE = 'oshadakavinda2/game-store-frontend'
+    }
+
     stages {
+        stage('Pull Latest Docker Hub Images') {
+            steps {
+                script {
+                    try {
+                        echo 'Pulling latest Docker images...'
+                        sh "docker pull ${BACKEND_IMAGE}:latest"
+                        sh "docker pull ${FRONTEND_IMAGE}:latest"
+                    } catch (Exception e) {
+                        echo "Error during image pulling: ${e.message}"
+                        currentBuild.result = 'FAILURE'
+                        error("Image pull failed")
+                    }
+                }
+            }
+        }
+
         stage('Deploy Docker Hub Images') {
             steps {
                 script {
                     try {
-                        // Stop and remove existing containers
+                        echo 'Stopping and removing existing containers...'
                         sh 'docker-compose down -v || true'
                         
-                        // Pull latest images
-                        sh 'docker pull oshadakavinda2/game-store-backend:latest'
-                        sh 'docker pull oshadakavinda2/game-store-frontend:latest'
-                        
-                        // Start services
+                        echo 'Starting services with new images...'
                         sh 'docker-compose up -d'
-                        
-                        // Show running containers
+
+                        echo 'Showing running containers...'
                         sh 'docker ps'
                         sh 'docker-compose logs'
                     } catch (Exception e) {
@@ -37,15 +54,14 @@ pipeline {
     post {
         always {
             script {
-                // Keep the containers running, only cleanup workspace
-                cleanWs()
+                cleanWs()  // Clean workspace but keep containers running
             }
         }
         success {
-            echo 'Deployment completed successfully!'
+            echo '✅ Deployment completed successfully!'
         }
         failure {
-            echo 'Deployment failed!'
+            echo '❌ Deployment failed!'
         }
     }
 }
