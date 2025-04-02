@@ -27,7 +27,7 @@ pipeline {
             }
         }
 
-        stage('Deploy Docker Hub Images') {
+        stage('Deploy Images On AWS') {
             steps {
                 script {
                     try {
