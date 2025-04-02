@@ -1,0 +1,14 @@
+---
+- name: Build and Push Docker Image
+  hosts: localhost
+  become: true
+  tasks:
+
+    - name: Build the Docker image
+      command: docker build -t oshadakavinda2/game-store-backend:latest .
+
+    - name: Log in to Docker Hub
+      command: echo "{{ docker_password }}" | docker login -u "{{ docker_username }}" --password-stdin
+
+    - name: Push Docker image to Docker Hub
+      command: docker push oshadakavinda2/game-store-backend:latest
