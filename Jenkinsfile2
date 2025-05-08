@@ -42,23 +42,33 @@ pipeline {
             }
         }
         
-        stage('Docker Service Check') {
+        stage('Docker Check') {
             steps {
                 script {
                     try {
-                        // First verify Docker service is running
-                        bat 'sc query docker'
-                        echo "Checking Docker service status..."
-                        
-                        // Test Docker connectivity
+                        // Check if Docker is accessible (regardless of service name)
+                        echo "Checking Docker availability..."
+                        bat 'docker --version'
                         bat 'docker info'
-                        echo "Docker service is running and accessible"
+                        echo "Docker is accessible"
                     } catch (Exception e) {
-                        echo "Docker service check failed: ${e.message}"
-                        echo "Please ensure Docker service is running and properly configured"
-                        echo "Try running: sc start docker"
-                        currentBuild.result = 'FAILURE'
-                        error("Docker service is not accessible")
+                        echo "Docker check failed: ${e.message}"
+                        echo "Attempting to start Docker Desktop (if installed)..."
+                        try {
+                            // Try to start Docker Desktop if available
+                            bat 'start "" "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe"'
+                            // Give it time to start
+                            sleep(time: 30, unit: 'SECONDS')
+                            // Check again
+                            bat 'docker --version'
+                            echo "Docker Desktop started successfully"
+                        } catch (Exception e2) {
+                            echo "Failed to start Docker Desktop: ${e2.message}"
+                            echo "Please ensure Docker is installed and running"
+                            echo "Try starting Docker Desktop manually before running the pipeline"
+                            currentBuild.result = 'FAILURE'
+                            error("Docker is not accessible")
+                        }
                     }
                 }
             }
