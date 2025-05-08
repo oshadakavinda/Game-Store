@@ -1,19 +1,18 @@
 pipeline {
     agent any
-    
+
     environment {
         DOCKERHUB_CREDENTIALS = 'docker-hub'  // Jenkins credentials ID
-        DOCKERHUB_USERNAME = 'oshadakavinda2' // Docker Hub username
+        DOCKERHUB_USERNAME = 'oshadakavinda2' // Change this to your Docker Hub username
         FRONTEND_IMAGE = 'oshadakavinda2/game-store-frontend'
         API_IMAGE = 'oshadakavinda2/game-store-api'
-        TF_CREDS = 'terraform-credentials' // Jenkins credentials ID for Terraform
     }
-    
+
     options {
         buildDiscarder(logRotator(numToKeepStr: '5'))
         skipDefaultCheckout(true)
     }
-    
+
     stages {
         stage('Optimized Checkout') {
             steps {
@@ -25,13 +24,12 @@ pipeline {
                         extensions: [
                             [$class: 'CloneOption', depth: 1, noTags: true, shallow: true, timeout: 10],
                             [$class: 'CleanBeforeCheckout'],
-                            [$class: 'SparseCheckoutPaths',
-                              sparseCheckoutPaths: [
+                            [$class: 'SparseCheckoutPaths', 
+                             sparseCheckoutPaths: [
                                 [$class: 'SparseCheckoutPath', path: 'GameStore.Api/'],
                                 [$class: 'SparseCheckoutPath', path: 'GameStore.Frontend/'],
                                 [$class: 'SparseCheckoutPath', path: 'docker-compose.yml'],
-                                [$class: 'SparseCheckoutPath', path: '.gitignore'],
-                                [$class: 'SparseCheckoutPath', path: 'terraform/']
+                                [$class: 'SparseCheckoutPath', path: '.gitignore']
                              ]]
                         ],
                         userRemoteConfigs: [[
@@ -41,86 +39,14 @@ pipeline {
                 }
             }
         }
-        
-        stage('Docker Check and Start') {
-            steps {
-                script {
-                    // First check if Docker is already running
-                    try {
-                        echo "Checking Docker availability..."
-                        bat 'docker --version'
-                        
-                        // Test Docker engine with a more reliable command
-                        def dockerRunning = bat(script: 'docker info', returnStatus: true)
-                        
-                        if (dockerRunning != 0) {
-                            throw new Exception("Docker engine is not running")
-                        }
-                        
-                        echo "Docker is accessible and running"
-                    } catch (Exception e) {
-                        echo "Docker check failed: ${e.message}"
-                        echo "Attempting to start Docker Desktop..."
-                        
-                        try {
-                            // Start Docker Desktop
-                            bat 'start "" "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe"'
-                            echo "Docker Desktop application started, waiting for engine to be ready..."
-                            
-                            // Wait for Docker engine to be ready with retry logic
-                            def dockerReady = false
-                            def maxRetries = 12 // 12 retries x 10 seconds = 2 minutes max
-                            def retryCount = 0
-                            
-                            while (!dockerReady && retryCount < maxRetries) {
-                                sleep(time: 10, unit: 'SECONDS')
-                                retryCount++
-                                echo "Checking Docker engine readiness (attempt ${retryCount}/${maxRetries})..."
-                                
-                                def dockerStatus = bat(script: 'docker ps', returnStatus: true)
-                                
-                                if (dockerStatus == 0) {
-                                    dockerReady = true
-                                    echo "Docker engine is now ready"
-                                } else {
-                                    echo "Docker engine not ready yet, waiting..."
-                                }
-                            }
-                            
-                            if (!dockerReady) {
-                                error "Docker engine failed to start after ${maxRetries * 10} seconds"
-                            }
-                            
-                        } catch (Exception e2) {
-                            echo "Failed to start Docker Desktop: ${e2.message}"
-                            echo "Please ensure Docker is installed and running"
-                            echo "Try starting Docker Desktop manually before running the pipeline"
-                            currentBuild.result = 'FAILURE'
-                            error("Docker is not accessible")
-                        }
-                    }
-                }
-            }
-        }
-        
+
         stage('Build Docker Images') {
             steps {
                 script {
                     try {
-                        // Verify Docker is running before building
-                        def dockerRunning = bat(script: 'docker ps', returnStatus: true)
-                        if (dockerRunning != 0) {
-                            error "Docker engine is still not ready. Cannot proceed with build."
-                        }
-                        
                         // Build Frontend and API images
-                        echo "Starting Docker build for frontend..."
                         bat "docker build -t ${FRONTEND_IMAGE}:latest GameStore.Frontend/"
-                        echo "Frontend image built successfully"
-                        
-                        echo "Starting Docker build for API..."
                         bat "docker build -t ${API_IMAGE}:latest GameStore.Api/"
-                        echo "API image built successfully"
                     } catch (Exception e) {
                         echo "Error during Docker build: ${e.message}"
                         currentBuild.result = 'FAILURE'
@@ -129,13 +55,13 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Push Images to Docker Hub') {
             steps {
                 script {
                     withCredentials([usernamePassword(credentialsId: DOCKERHUB_CREDENTIALS, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         try {
-                            bat "echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER} --password-stdin"
+                            bat "docker login -u ${DOCKER_USER} -p ${DOCKER_PASS}"
                             bat "docker push ${FRONTEND_IMAGE}:latest"
                             bat "docker push ${API_IMAGE}:latest"
                         } catch (Exception e) {
@@ -147,64 +73,16 @@ pipeline {
                 }
             }
         }
-        
-        stage('Terraform Deploy') {
-            steps {
-                script {
-                    // Use credentials for Terraform if needed (e.g., AWS, Azure, etc.)
-                    withCredentials([file(credentialsId: TF_CREDS, variable: 'TF_CREDENTIALS')]) {
-                        dir('terraform') {
-                            try {
-                                // Copy credentials file if needed
-                                bat "if exist \"%TF_CREDENTIALS%\" copy \"%TF_CREDENTIALS%\" credentials.json"
-                                
-                                // Initialize Terraform
-                                bat 'terraform init -no-color'
-                                
-                                // Plan Terraform changes
-                                bat 'terraform plan -no-color -out=tfplan'
-                                
-                                // Apply Terraform changes
-                                bat 'terraform apply -no-color -auto-approve tfplan'
-                                
-                                echo 'Terraform infrastructure deployment completed successfully'
-                            } catch (Exception e) {
-                                echo "Error during Terraform deployment: ${e.message}"
-                                currentBuild.result = 'FAILURE'
-                                error("Terraform deployment failed")
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
-    
+
     post {
         always {
             script {
-                // Cleanup Docker images to prevent disk space issues
-                try {
-                    bat "docker logout"
-                    echo "Logged out of Docker Hub"
-                } catch (Exception e) {
-                    echo "Docker logout failed: ${e.message}"
-                }
-                
-                // Add small delay before cleaning workspace
-                sleep(time: 5, unit: 'SECONDS')
-                
-                // Clean workspace with more robust error handling
-                try {
-                    cleanWs(deleteDirs: true, disableDeferredWipeout: true)
-                } catch (Exception e) {
-                    echo "Warning: Workspace cleanup failed: ${e.message}"
-                    echo "This is non-critical and the build will continue"
-                }
+                cleanWs()
             }
         }
         success {
-            echo '✅ Docker images successfully pushed to Docker Hub and infrastructure deployed!'
+            echo '✅ Docker images successfully pushed to Docker Hub!'
         }
         failure {
             echo '❌ Pipeline failed!'
