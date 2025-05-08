@@ -31,7 +31,7 @@ pipeline {
                                 [$class: 'SparseCheckoutPath', path: 'GameStore.Frontend/'],
                                 [$class: 'SparseCheckoutPath', path: 'docker-compose.yml'],
                                 [$class: 'SparseCheckoutPath', path: '.gitignore'],
-                                [$class: 'SparseCheckoutPath', path: 'terraform/'] // Added terraform folder
+                                [$class: 'SparseCheckoutPath', path: 'terraform/']
                              ]]
                         ],
                         userRemoteConfigs: [[
@@ -42,13 +42,40 @@ pipeline {
             }
         }
         
+        stage('Docker Service Check') {
+            steps {
+                script {
+                    try {
+                        // First verify Docker service is running
+                        bat 'sc query docker'
+                        echo "Checking Docker service status..."
+                        
+                        // Test Docker connectivity
+                        bat 'docker info'
+                        echo "Docker service is running and accessible"
+                    } catch (Exception e) {
+                        echo "Docker service check failed: ${e.message}"
+                        echo "Please ensure Docker service is running and properly configured"
+                        echo "Try running: sc start docker"
+                        currentBuild.result = 'FAILURE'
+                        error("Docker service is not accessible")
+                    }
+                }
+            }
+        }
+        
         stage('Build Docker Images') {
             steps {
                 script {
                     try {
                         // Build Frontend and API images
+                        echo "Starting Docker build for frontend..."
                         bat "docker build -t ${FRONTEND_IMAGE}:latest GameStore.Frontend/"
+                        echo "Frontend image built successfully"
+                        
+                        echo "Starting Docker build for API..."
                         bat "docker build -t ${API_IMAGE}:latest GameStore.Api/"
+                        echo "API image built successfully"
                     } catch (Exception e) {
                         echo "Error during Docker build: ${e.message}"
                         currentBuild.result = 'FAILURE'
@@ -63,7 +90,7 @@ pipeline {
                 script {
                     withCredentials([usernamePassword(credentialsId: DOCKERHUB_CREDENTIALS, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         try {
-                            bat "docker login -u ${DOCKER_USER} -p ${DOCKER_PASS}"
+                            bat "echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER} --password-stdin"
                             bat "docker push ${FRONTEND_IMAGE}:latest"
                             bat "docker push ${API_IMAGE}:latest"
                         } catch (Exception e) {
@@ -83,6 +110,9 @@ pipeline {
                     withCredentials([file(credentialsId: TF_CREDS, variable: 'TF_CREDENTIALS')]) {
                         dir('terraform') {
                             try {
+                                // Copy credentials file if needed
+                                bat "if exist \"%TF_CREDENTIALS%\" copy \"%TF_CREDENTIALS%\" credentials.json"
+                                
                                 // Initialize Terraform
                                 bat 'terraform init -no-color'
                                 
@@ -108,6 +138,13 @@ pipeline {
     post {
         always {
             script {
+                // Cleanup Docker images to prevent disk space issues
+                try {
+                    bat "docker logout"
+                    echo "Logged out of Docker Hub"
+                } catch (Exception e) {
+                    echo "Docker logout failed: ${e.message}"
+                }
                 cleanWs()
             }
         }
