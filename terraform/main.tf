@@ -15,8 +15,8 @@ provider "aws" {
 
 # Step 1: Create Security Group in Default VPC
 resource "aws_security_group" "devops_sg" {
-  name        = "My-security-group"
-  description = "Allow SSH, HTTP, HTTPS, and custom ports"
+  name        = "game-store-security-group"
+  description = "Allow SSH, HTTP, HTTPS, and application-specific ports"
 
   ingress {
     from_port   = 22
@@ -39,26 +39,20 @@ resource "aws_security_group" "devops_sg" {
     cidr_blocks = ["0.0.0.0/0"] # Allow HTTPS access from anywhere
   }
 
-  # Allow Custom Ports
+  # Game Store Backend Port
   ingress {
-    from_port   = 5000
-    to_port     = 5000
+    from_port   = 5274
+    to_port     = 5274
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # Allow access to port 5000
+    cidr_blocks = ["0.0.0.0/0"] # Allow access to backend port
   }
 
+  # Game Store Frontend Port
   ingress {
-    from_port   = 3000
-    to_port     = 3000
+    from_port   = 5003
+    to_port     = 5003
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # Allow access to port 3000
-  }
-
-  ingress {
-    from_port   = 27017
-    to_port     = 27017
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # Allow access to port 27017 (MongoDB)
+    cidr_blocks = ["0.0.0.0/0"] # Allow access to frontend port
   }
 
   egress {
@@ -69,39 +63,100 @@ resource "aws_security_group" "devops_sg" {
   }
 
   tags = {
-    Name = "My-security-group"
+    Name = "game-store-security-group"
   }
 }
 
 # Step 2: Create EC2 Instance with Security Group
-resource "aws_instance" "free_tier_instance" {
+resource "aws_instance" "game_store_instance" {
   ami           = "ami-04b4f1a9cf54c11d0" # Ubuntu AMI ID
   instance_type = "t2.micro"              # Free tier eligible instance type
-  key_name      = "devops"
+  key_name      = "devops"                # Your SSH key pair name
 
   # Attach Security Group by ID
   vpc_security_group_ids = [aws_security_group.devops_sg.id]
 
+  # Install Docker, Docker Compose and deploy the game store application
   user_data = <<-EOF
               #!/bin/bash
+              # Update and install dependencies
               sudo apt-get update -y
-              sudo apt-get install -y docker.io
+              sudo apt-get install -y docker.io docker-compose curl
+              
+              # Start and enable Docker
               sudo systemctl start docker
               sudo systemctl enable docker
-              sudo usermod -aG docker ubuntu  # Allow the 'ubuntu' user to run Docker without sudo
+              sudo usermod -aG docker ubuntu
+              
+              # Create docker-compose.yml
+              cat > /home/ubuntu/docker-compose.yml <<'DOCKERCOMPOSE'
+              version: '3'
+              services:
+                backend:
+                  image: oshadakavinda2/game-store-backend:latest
+                  ports:
+                    - "5274:5274"
+                  environment:
+                    - ASPNETCORE_URLS=http://0.0.0.0:5274
+                  volumes:
+                    - sqlite_data:/app/Data
+                  restart: always
+              
+                frontend:
+                  image: oshadakavinda2/game-store-frontend:latest
+                  ports:
+                    - "5003:8080"
+                  depends_on:
+                    - backend
+                  restart: always
+              
+              volumes:
+                sqlite_data:
+              DOCKERCOMPOSE
+              
+              # Fix permissions
+              sudo chown ubuntu:ubuntu /home/ubuntu/docker-compose.yml
+              
+              # Deploy the application using Docker Compose
+              cd /home/ubuntu
+              sudo docker-compose up -d
               EOF
 
+  # Add EBS volume for persistent data
+  root_block_device {
+    volume_size = 20
+    volume_type = "gp3"
+  }
+
   tags = {
-    Name = "FreeTierUbuntuInstance" # Tag for the instance
+    Name = "GameStoreInstance"
+  }
+}
+
+# Step 3: Create an Elastic IP for the instance
+resource "aws_eip" "game_store_eip" {
+  instance = aws_instance.game_store_instance.id
+  domain   = "vpc"
+  
+  tags = {
+    Name = "GameStoreEIP"
   }
 }
 
 output "instance_id" {
   description = "The ID of the created EC2 instance"
-  value       = aws_instance.free_tier_instance.id
+  value       = aws_instance.game_store_instance.id
 }
 
 output "instance_public_ip" {
   description = "The public IP of the created EC2 instance"
-  value       = aws_instance.free_tier_instance.public_ip
+  value       = aws_eip.game_store_eip.public_ip
+}
+
+output "application_urls" {
+  description = "URLs to access the application"
+  value = {
+    frontend = "http://${aws_eip.game_store_eip.public_ip}:5003"
+    backend  = "http://${aws_eip.game_store_eip.public_ip}:5274"
+  }
 }
