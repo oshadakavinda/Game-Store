@@ -10,7 +10,10 @@ terraform {
 }
 
 provider "aws" {
-  region = "us-east-1" # Specify the AWS region
+  region     = "us-east-1" # Specify the AWS region
+  # Uncomment and fill in these lines with your credentials
+   access_key = "AKIAQ3EGUJ5ZE27WQZ7N"
+   secret_key = "lM6Wzlg4rp5bxTyvFDReBPpYsLfpB5vr4i+MACTL"
 }
 
 # Step 1: Create Security Group in Default VPC
