@@ -10,10 +10,8 @@ terraform {
 }
 
 provider "aws" {
-  region     = "us-east-1" # Specify the AWS region
-  # Uncomment and fill in these lines with your credentials
-   access_key = "AKIAQ3EGUJ5ZE27WQZ7N"
-   secret_key = "lM6Wzlg4rp5bxTyvFDReBPpYsLfpB5vr4i+MACTL"
+  region = "us-east-1" # Specify the AWS region
+  # No hardcoded credentials - will be provided by environment variables
 }
 
 # Step 1: Create Security Group in Default VPC
@@ -84,19 +82,23 @@ resource "aws_instance" "game_store_instance" {
               #!/bin/bash
               # Update and install dependencies
               sudo apt-get update -y
-              sudo apt-get install -y docker.io docker-compose curl
+              sudo apt-get install -y docker.io curl
               
               # Start and enable Docker
               sudo systemctl start docker
               sudo systemctl enable docker
               sudo usermod -aG docker ubuntu
               
+              # Install Docker Compose
+              sudo curl -L "https://github.com/docker/compose/releases/download/v2.18.1/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+              sudo chmod +x /usr/local/bin/docker-compose
+              
               # Create docker-compose.yml
               cat > /home/ubuntu/docker-compose.yml <<'DOCKERCOMPOSE'
               version: '3'
               services:
                 backend:
-                  image: oshadakavinda2/game-store-backend:latest
+                  image: oshadakavinda2/game-store-api:latest
                   ports:
                     - "5274:5274"
                   environment:
@@ -120,9 +122,17 @@ resource "aws_instance" "game_store_instance" {
               # Fix permissions
               sudo chown ubuntu:ubuntu /home/ubuntu/docker-compose.yml
               
+              # Pull the images
+              sudo docker pull oshadakavinda2/game-store-api:latest
+              sudo docker pull oshadakavinda2/game-store-frontend:latest
+              
               # Deploy the application using Docker Compose
               cd /home/ubuntu
               sudo docker-compose up -d
+              
+              # Create a deployment log for troubleshooting
+              echo "Deployment completed at $(date)" > /home/ubuntu/deployment.log
+              sudo docker ps >> /home/ubuntu/deployment.log
               EOF
 
   # Add EBS volume for persistent data
