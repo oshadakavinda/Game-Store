@@ -3,10 +3,11 @@ pipeline {
     
     environment {
         DOCKERHUB_CREDENTIALS = 'docker-hub'  // Jenkins credentials ID
-        DOCKERHUB_USERNAME = 'oshadakavinda2' // Change this to your Docker Hub username
+        DOCKERHUB_USERNAME = 'oshadakavinda2' // Your Docker Hub username
         FRONTEND_IMAGE = 'oshadakavinda2/game-store-frontend'
         API_IMAGE = 'oshadakavinda2/game-store-api'
-        TF_CREDS = 'terraform-credentials' // Jenkins credentials ID for Terraform
+        AWS_CREDENTIALS = 'aws-credentials' // Jenkins credentials ID for AWS
+        TF_LOG = 'DEBUG' // Enable Terraform debug logging
     }
     
     options {
@@ -46,7 +47,7 @@ pipeline {
             steps {
                 script {
                     try {
-                        // Check if Docker is accessible (regardless of service name)
+                        // Check if Docker is accessible
                         echo "Checking Docker availability..."
                         bat 'docker --version'
                         bat 'docker info'
@@ -64,10 +65,8 @@ pipeline {
                             echo "Docker Desktop started successfully"
                         } catch (Exception e2) {
                             echo "Failed to start Docker Desktop: ${e2.message}"
-                            echo "Please ensure Docker is installed and running"
-                            echo "Try starting Docker Desktop manually before running the pipeline"
                             currentBuild.result = 'FAILURE'
-                            error("Docker is not accessible")
+                            error("Docker is not accessible. Please ensure Docker is installed and running.")
                         }
                     }
                 }
@@ -113,28 +112,65 @@ pipeline {
             }
         }
         
+        stage('Verify Terraform Files') {
+            steps {
+                script {
+                    // Check if the terraform directory exists and contains the necessary files
+                    bat 'dir terraform || mkdir terraform'
+                    
+                    // Check if main.tf exists, create if not
+                    bat 'if not exist "terraform\\main.tf" echo Terraform main.tf file is missing'
+                    
+                    // List all files in terraform directory
+                    bat 'dir terraform'
+                }
+            }
+        }
+        
         stage('Terraform Deploy') {
             steps {
                 script {
-                    // Use credentials for Terraform if needed (e.g., AWS, Azure, etc.)
-                    withCredentials([file(credentialsId: TF_CREDS, variable: 'TF_CREDENTIALS')]) {
+                    // Use AWS credentials for Terraform
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', 
+                                     credentialsId: AWS_CREDENTIALS,
+                                     accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
+                                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
                         dir('terraform') {
                             try {
-                                // Copy credentials file if needed
-                                bat "if exist \"%TF_CREDENTIALS%\" copy \"%TF_CREDENTIALS%\" credentials.json"
+                                // Set environment variables for debugging
+                                bat 'set TF_LOG=DEBUG'
+                                bat 'set TF_LOG_PATH=terraform.log'
+                                
+                                // Check Terraform installation
+                                bat 'terraform version'
                                 
                                 // Initialize Terraform
+                                echo "Initializing Terraform..."
                                 bat 'terraform init -no-color'
                                 
+                                // Validate the configuration
+                                echo "Validating Terraform configuration..."
+                                bat 'terraform validate'
+                                
                                 // Plan Terraform changes
+                                echo "Planning Terraform changes..."
                                 bat 'terraform plan -no-color -out=tfplan'
                                 
                                 // Apply Terraform changes
+                                echo "Applying Terraform changes..."
                                 bat 'terraform apply -no-color -auto-approve tfplan'
+                                
+                                // Output results for verification
+                                echo "Terraform output:"
+                                bat 'terraform output'
                                 
                                 echo 'Terraform infrastructure deployment completed successfully'
                             } catch (Exception e) {
                                 echo "Error during Terraform deployment: ${e.message}"
+                                echo "Terraform diagnostic information:"
+                                bat 'if exist terraform.log type terraform.log'
+                                bat 'if exist .terraform.lock.hcl type .terraform.lock.hcl'
+                                bat 'dir'
                                 currentBuild.result = 'FAILURE'
                                 error("Terraform deployment failed")
                             }
@@ -162,7 +198,7 @@ pipeline {
             echo '✅ Docker images successfully pushed to Docker Hub and infrastructure deployed!'
         }
         failure {
-            echo '❌ Pipeline failed!'
+            echo '❌ Pipeline failed! Check logs for details.'
         }
     }
 }
