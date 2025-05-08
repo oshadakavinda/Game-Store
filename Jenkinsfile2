@@ -1,18 +1,19 @@
 pipeline {
     agent any
-
+    
     environment {
         DOCKERHUB_CREDENTIALS = 'docker-hub'  // Jenkins credentials ID
         DOCKERHUB_USERNAME = 'oshadakavinda2' // Change this to your Docker Hub username
         FRONTEND_IMAGE = 'oshadakavinda2/game-store-frontend'
         API_IMAGE = 'oshadakavinda2/game-store-api'
+        TF_CREDS = 'terraform-credentials' // Jenkins credentials ID for Terraform
     }
-
+    
     options {
         buildDiscarder(logRotator(numToKeepStr: '5'))
         skipDefaultCheckout(true)
     }
-
+    
     stages {
         stage('Optimized Checkout') {
             steps {
@@ -24,12 +25,13 @@ pipeline {
                         extensions: [
                             [$class: 'CloneOption', depth: 1, noTags: true, shallow: true, timeout: 10],
                             [$class: 'CleanBeforeCheckout'],
-                            [$class: 'SparseCheckoutPaths', 
-                             sparseCheckoutPaths: [
+                            [$class: 'SparseCheckoutPaths',
+                              sparseCheckoutPaths: [
                                 [$class: 'SparseCheckoutPath', path: 'GameStore.Api/'],
                                 [$class: 'SparseCheckoutPath', path: 'GameStore.Frontend/'],
                                 [$class: 'SparseCheckoutPath', path: 'docker-compose.yml'],
-                                [$class: 'SparseCheckoutPath', path: '.gitignore']
+                                [$class: 'SparseCheckoutPath', path: '.gitignore'],
+                                [$class: 'SparseCheckoutPath', path: 'terraform/'] // Added terraform folder
                              ]]
                         ],
                         userRemoteConfigs: [[
@@ -39,7 +41,7 @@ pipeline {
                 }
             }
         }
-
+        
         stage('Build Docker Images') {
             steps {
                 script {
@@ -55,7 +57,7 @@ pipeline {
                 }
             }
         }
-
+        
         stage('Push Images to Docker Hub') {
             steps {
                 script {
@@ -73,8 +75,36 @@ pipeline {
                 }
             }
         }
+        
+        stage('Terraform Deploy') {
+            steps {
+                script {
+                    // Use credentials for Terraform if needed (e.g., AWS, Azure, etc.)
+                    withCredentials([file(credentialsId: TF_CREDS, variable: 'TF_CREDENTIALS')]) {
+                        dir('terraform') {
+                            try {
+                                // Initialize Terraform
+                                bat 'terraform init -no-color'
+                                
+                                // Plan Terraform changes
+                                bat 'terraform plan -no-color -out=tfplan'
+                                
+                                // Apply Terraform changes
+                                bat 'terraform apply -no-color -auto-approve tfplan'
+                                
+                                echo 'Terraform infrastructure deployment completed successfully'
+                            } catch (Exception e) {
+                                echo "Error during Terraform deployment: ${e.message}"
+                                currentBuild.result = 'FAILURE'
+                                error("Terraform deployment failed")
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
-
+    
     post {
         always {
             script {
@@ -82,7 +112,7 @@ pipeline {
             }
         }
         success {
-            echo '✅ Docker images successfully pushed to Docker Hub!'
+            echo '✅ Docker images successfully pushed to Docker Hub and infrastructure deployed!'
         }
         failure {
             echo '❌ Pipeline failed!'
