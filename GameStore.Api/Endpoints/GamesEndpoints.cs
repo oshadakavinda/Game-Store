@@ -16,7 +16,7 @@ public static class GamesEndpoints
                        .WithParameterValidation();
 
         // GET /games
-        group.MapGet("/", async (GameStoreContext dbContext) => 
+        group.MapGet("/", async (GameStoreContext dbContext) =>
             await dbContext.Games
                      .Include(game => game.Genre)
                      .Select(game => game.ToGameSummaryDto())
@@ -28,7 +28,7 @@ public static class GamesEndpoints
         {
             Game? game = await dbContext.Games.FindAsync(id);
 
-            return game is null ? 
+            return game is null ?
                 Results.NotFound() : Results.Ok(game.ToGameDetailsDto());
         })
         .WithName(GetGameEndpointName);
@@ -42,8 +42,8 @@ public static class GamesEndpoints
             await dbContext.SaveChangesAsync();
 
             return Results.CreatedAtRoute(
-                GetGameEndpointName, 
-                new { id = game.Id }, 
+                GetGameEndpointName,
+                new { id = game.Id },
                 game.ToGameDetailsDto());
         });
 
@@ -75,6 +75,19 @@ public static class GamesEndpoints
 
             return Results.NoContent();
         });
+
+        // POST /games/resetdb - Deletes all games and resets auto-increment ID (no auth)
+        group.MapPost("/resetdb", async (GameStoreContext dbContext) =>
+        {
+            // 🔥 Delete all games
+            await dbContext.Games.ExecuteDeleteAsync();
+
+            // 🔁 Reset auto-increment for SQLite
+            await dbContext.Database.ExecuteSqlRawAsync("DELETE FROM sqlite_sequence WHERE name='Games';");
+
+            return Results.Ok(new { message = "Game table reset successfully." });
+        });
+
 
         return group;
     }
